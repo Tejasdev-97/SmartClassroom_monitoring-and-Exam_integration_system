@@ -207,3 +207,40 @@ async def get_snapshot_image(
         },
     )
 
+
+@router.get("/{snapshot_id}/url")
+async def get_snapshot_presigned_url(
+    snapshot_id: str,
+    actor: ProfessorUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return authenticated short-lived presigned download URL (S3/Neon) or fallback route."""
+    snap = (await db.execute(select(Snapshot).where(Snapshot.snapshot_id == snapshot_id))).scalars().first()
+    if not snap:
+        raise NotFoundError("Snapshot")
+    if snap.video_analysis_session_id:
+        sess = (await db.execute(
+            select(VideoAnalysisSession).where(
+                VideoAnalysisSession.video_analysis_session_id == snap.video_analysis_session_id
+            )
+        )).scalars().first()
+        if not sess:
+            raise NotFoundError("Video analysis session")
+        if sess.created_by_user_id != actor["sub"] and actor["role"] != "admin":
+            raise ForbiddenError("Not authorized to view snapshots for this session.")
+    elif snap.attempt_id:
+        await _authorize_professor_for_attempt(db, snap.attempt_id, actor)
+    else:
+        raise NotFoundError("Snapshot")
+
+    from app.services.evidence_storage import get_snapshot_download_url
+    url = get_snapshot_download_url(snap, expires_in=300)
+    is_presigned = bool(url and url.startswith(("http://", "https://")))
+    return {
+        "ok": True,
+        "url": url,
+        "expires_in": 300 if is_presigned else None,
+        "storage_key": snap.storage_key,
+    }
+
+

@@ -11,6 +11,7 @@ are embedded with ReportLab. Nothing is fabricated: when evidence is missing the
 
 import hashlib
 import io
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -111,7 +112,21 @@ def load_snapshot_bytes(snap: Snapshot, blob_bytes: bytes | None = None):
             return None, "corrupt", "Evidence file failed its integrity check (checksum mismatch)."
         return data, "image", ""
 
-    # 2. Legacy filesystem fallback
+    # 2. S3 / Neon Object Storage check
+    if snap.storage_key and not snap.storage_key.startswith("postgres://") and not os.path.isabs(snap.storage_key):
+        try:
+            from app.services import s3_storage
+            s3_data = s3_storage.get_object(snap.storage_key, bucket_type="snapshot")
+            if s3_data:
+                if len(s3_data) > settings.MAX_SNAPSHOT_SIZE_BYTES:
+                    return None, "corrupt", "Evidence file exceeds the permitted size."
+                if snap.sha256 and hashlib.sha256(s3_data).hexdigest().lower() != snap.sha256.lower():
+                    return None, "corrupt", "Evidence file failed its integrity check (checksum mismatch)."
+                return s3_data, "image", ""
+        except Exception:
+            pass
+
+    # 3. Legacy filesystem fallback
     from app.api.v1.snapshots import resolve_snapshot_path
     path = resolve_snapshot_path(snap)
     if path is None:

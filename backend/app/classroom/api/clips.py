@@ -161,6 +161,20 @@ async def download_clip(clip_id: str, user: ProfessorUser, db: Session = Depends
                     headers={"Cache-Control": "private, no-store"})
 
 
+@router.get("/clips/{clip_id}/url", summary="Get short-lived presigned download URL for a warning clip")
+async def get_clip_presigned_url(clip_id: str, user: ProfessorUser, db: Session = Depends(get_classroom_db)):
+    """Return authenticated short-lived presigned download URL (S3/Neon) or fallback route."""
+    clip = db.get(VideoEvidenceClip, clip_id)
+    if not clip or clip.status != "uploaded" or not clip.storage_key:
+        raise NotFoundError("Clip")
+    try:
+        url = clip_storage.get_download_url(clip.storage_backend, clip.storage_key, expires_in=300)
+        return {"ok": True, "url": url, "expires_in": 300, "storage_backend": clip.storage_backend}
+    except Exception as e:
+        logger.warning("Could not generate presigned URL for clip %s: %s", clip_id, e)
+        return {"ok": True, "url": f"/api/v1/classroom/clips/{clip_id}/download", "expires_in": None, "storage_backend": clip.storage_backend}
+
+
 @router.get("/webrtc/config", summary="ICE server configuration (STUN/TURN)")
 async def webrtc_config():
     """Provider-independent: STUN_SERVER_URL, TURN_SERVER_URL (comma separated, may include

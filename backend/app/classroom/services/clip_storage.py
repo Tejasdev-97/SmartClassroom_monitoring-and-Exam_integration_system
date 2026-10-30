@@ -1,17 +1,16 @@
 """
 Provider-independent object storage for warning video clips.
+Supports Neon Object Storage, AWS S3, Cloudflare R2, MinIO, and local filesystem fallback.
 
-CLIP_STORAGE_BACKEND = local | s3   (default: local, for development only)
-
-s3 works with any S3-compatible provider (AWS S3, Cloudflare R2, Backblaze B2, MinIO...):
-  CLIP_S3_BUCKET, CLIP_S3_ENDPOINT_URL (optional), CLIP_S3_REGION (optional),
-  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   (server-side only)
-
-local writes under CLIP_LOCAL_DIR and is NOT durable on ephemeral hosts such as Render.
+CLIP_STORAGE_BACKEND = local | s3 | neon (default: local, for development only)
 """
+from __future__ import annotations
+
 import os
 from pathlib import Path
 from typing import Tuple
+
+from app.services import s3_storage
 
 ALLOWED_MIME = {"video/webm", "video/mp4"}
 
@@ -29,33 +28,21 @@ def backend_name() -> str:
 
 
 def _safe_key(key: str) -> str:
-    if ".." in key or key.startswith(("/", "\\")):
-        raise ValueError("Unsafe storage key")
-    return key
+    return s3_storage.safe_key(key)
 
 
 def _local_dir() -> Path:
     return Path(os.environ.get("CLIP_LOCAL_DIR", "./storage/clips")).resolve()
 
 
-def _s3():
-    try:
-        import boto3  # optional dependency, required only for the s3 backend
-    except ImportError as e:  # pragma: no cover
-        raise RuntimeError("CLIP_STORAGE_BACKEND=s3 requires the boto3 package") from e
-    return boto3.client(
-        "s3",
-        endpoint_url=os.environ.get("CLIP_S3_ENDPOINT_URL") or None,
-        region_name=os.environ.get("CLIP_S3_REGION") or None,
-    )
-
-
 def put(key: str, data: bytes, mime: str) -> Tuple[str, str]:
     """Store bytes; returns (backend, key)."""
     key = _safe_key(key)
-    if backend_name() == "s3":
-        _s3().put_object(Bucket=os.environ["CLIP_S3_BUCKET"], Key=key, Body=data, ContentType=mime)
-        return "s3", key
+    backend = backend_name()
+    if backend in ("s3", "neon"):
+        b, k = s3_storage.put_object(key, data, mime, bucket_type="clip")
+        return b, k
+
     path = _local_dir() / key
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
@@ -63,8 +50,16 @@ def put(key: str, data: bytes, mime: str) -> Tuple[str, str]:
 
 
 def get(backend: str, key: str) -> bytes:
+    """Retrieve raw clip bytes from storage backend."""
     key = _safe_key(key)
-    if backend == "s3":
-        obj = _s3().get_object(Bucket=os.environ["CLIP_S3_BUCKET"], Key=key)
-        return obj["Body"].read()
+    if backend in ("s3", "neon"):
+        return s3_storage.get_object(key, bucket_type="clip")
     return (_local_dir() / key).read_bytes()
+
+
+def get_download_url(backend: str, key: str, expires_in: int = 300) -> str:
+    """Generate authenticated short-lived presigned URL if in S3/Neon, or return key."""
+    key = _safe_key(key)
+    if backend in ("s3", "neon"):
+        return s3_storage.generate_presigned_url(key, bucket_type="clip", expires_in=expires_in)
+    return f"/api/v1/classroom/clips/{key}/download"

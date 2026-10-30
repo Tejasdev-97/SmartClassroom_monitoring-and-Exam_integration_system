@@ -90,18 +90,30 @@ This guide details deployment of the complete platform across Vercel (Frontend),
 
 ---
 
-## 3. Evidence Storage (Durable S3 / Cloudflare R2)
+## 3. Evidence Storage (Neon Object Storage / S3-Compatible)
 
-In production multi-node deployments, video clips and snapshots should reside on object storage:
-Set on Render:
-```ini
-CLIP_STORAGE_BACKEND=s3
-CLIP_S3_BUCKET=examproctor-evidence-clips
-CLIP_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-CLIP_S3_ACCESS_KEY=your_key_id
-CLIP_S3_SECRET_KEY=your_secret_key
-CLIP_S3_REGION=auto
-```
+To ensure evidence durability across ephemeral container restarts, configure Neon Object Storage (or AWS S3 / Cloudflare R2 / MinIO):
+
+### Neon Object Storage Setup
+1. In your **Neon Console**, navigate to your project and enable **Object Storage**.
+2. Note your S3-compatible API Endpoint (e.g. `https://<project-id>.s3.neon.tech`) and generate storage credentials (Access Key ID & Secret Access Key).
+3. Create private buckets:
+   - `examproctor-snapshots` (for student exam screen snapshots)
+   - `examproctor-clips` (for classroom warning video clips)
+4. Set the following environment variables on your Render backend:
+   ```ini
+   SNAPSHOT_STORAGE_TYPE=neon
+   CLIP_STORAGE_BACKEND=neon
+   NEON_OBJECT_STORAGE_ENDPOINT=https://<project-id>.s3.neon.tech
+   NEON_OBJECT_STORAGE_ACCESS_KEY_ID=your_access_key_id
+   NEON_OBJECT_STORAGE_SECRET_ACCESS_KEY=your_secret_access_key
+   NEON_OBJECT_STORAGE_REGION=ap-southeast-1
+   NEON_SNAPSHOT_BUCKET=examproctor-snapshots
+   NEON_CLIP_BUCKET=examproctor-clips
+   ```
+   *(Standard AWS names `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL`, and `AWS_REGION` are also fully supported as fallbacks).*
+
+5. **Private Bucket Security**: All evidence objects remain strictly private. The backend issues short-lived presigned URLs (expires in 5 minutes) via `GET /api/v1/snapshots/{id}/url` and `GET /api/v1/classroom/clips/{id}/url` or streams them directly through authenticated endpoints after verifying professor/admin permissions. Credentials are never sent to the client.
 
 ---
 

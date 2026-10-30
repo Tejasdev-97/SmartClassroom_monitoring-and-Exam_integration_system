@@ -5,6 +5,7 @@ SHA-256 cryptographic verification, legacy disk fallback, and transactional safe
 """
 
 import hashlib
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
@@ -95,25 +96,36 @@ async def persist_snapshot_blob(
         db.add(blob_record)
         result_status = "stored"
 
-    # 4. Dual-write backup copy to local disk if directory configured (best-effort secondary cache)
-    try:
-        base_dir = Path(settings.SNAPSHOT_LOCAL_DIR)
-        sub_dir: Path
-        if snap.video_analysis_session_id:
-            sub_dir = base_dir / "video_analysis" / str(snap.video_analysis_session_id)
-        elif snap.attempt_id:
-            sub_dir = base_dir / str(snap.attempt_id)
-        else:
-            sub_dir = base_dir / "general"
+    # 4. Storage dispatch: S3/Neon Object Storage or local disk fallback
+    storage_type = os.environ.get("SNAPSHOT_STORAGE_TYPE", settings.SNAPSHOT_STORAGE_TYPE).lower()
+    if storage_type in ("s3", "neon"):
+        try:
+            from app.services import s3_storage
+            s3_key = f"snapshots/{snap.attempt_id or 'general'}/{snap.snapshot_id}.jpg"
+            backend, key = s3_storage.put_object(s3_key, content, detected_mime, bucket_type="snapshot")
+            snap.storage_key = key
+        except Exception as e:
+            # Fall back to PostgreSQL URI if S3 fails
+            snap.storage_key = f"postgres://snapshot_blobs/{snap.snapshot_id}"
+    else:
+        try:
+            base_dir = Path(settings.SNAPSHOT_LOCAL_DIR)
+            sub_dir: Path
+            if snap.video_analysis_session_id:
+                sub_dir = base_dir / "video_analysis" / str(snap.video_analysis_session_id)
+            elif snap.attempt_id:
+                sub_dir = base_dir / str(snap.attempt_id)
+            else:
+                sub_dir = base_dir / "general"
 
-        sub_dir.mkdir(parents=True, exist_ok=True)
-        disk_path = sub_dir / f"{snap.snapshot_id}.jpg"
-        async with aiofiles.open(disk_path, "wb") as f:
-            await f.write(content)
-        snap.storage_key = str(disk_path)
-    except Exception:
-        # Non-fatal if disk is read-only or ephemeral: PostgreSQL is authoritative
-        snap.storage_key = f"postgres://snapshot_blobs/{snap.snapshot_id}"
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            disk_path = sub_dir / f"{snap.snapshot_id}.jpg"
+            async with aiofiles.open(disk_path, "wb") as f:
+                await f.write(content)
+            snap.storage_key = str(disk_path)
+        except Exception:
+            # Non-fatal if disk is read-only or ephemeral: PostgreSQL is authoritative
+            snap.storage_key = f"postgres://snapshot_blobs/{snap.snapshot_id}"
 
     # 5. Update parent snapshot metadata
     snap.storage_status = "uploaded"
@@ -134,15 +146,29 @@ async def get_snapshot_image_bytes(
     """
     Retrieve snapshot image bytes.
     Strategy:
-      1. Check PostgreSQL snapshot_blobs table (durable primary source)
-      2. If missing, check legacy filesystem storage (fallback)
-      3. If found on disk and valid, auto-migrate to snapshot_blobs
+      1. Check S3 / Neon Object Storage if key is stored in S3/Neon
+      2. Check PostgreSQL snapshot_blobs table (durable relational source)
+      3. If missing, check legacy filesystem storage (fallback)
+      4. If found on disk and valid, auto-migrate to snapshot_blobs
     Returns (image_bytes, mime_type) or (None, None).
     """
     if not snap:
         return None, None
 
-    # Step 1: Query PostgreSQL snapshot_blobs
+    storage_type = os.environ.get("SNAPSHOT_STORAGE_TYPE", settings.SNAPSHOT_STORAGE_TYPE).lower()
+
+    # Step 1: Check S3 / Neon Object Storage if key indicates object storage or configured
+    if snap.storage_key and not snap.storage_key.startswith("postgres://") and not os.path.isabs(snap.storage_key):
+        try:
+            from app.services import s3_storage
+            if storage_type in ("s3", "neon") or s3_storage.is_s3_configured(bucket_type="snapshot"):
+                data = s3_storage.get_object(snap.storage_key, bucket_type="snapshot")
+                if data and (not snap.sha256 or compute_sha256(data) == snap.sha256.lower()):
+                    return data, (snap.mime_type or "image/jpeg")
+        except Exception:
+            pass  # Fall through to PostgreSQL snapshot_blobs
+
+    # Step 2: Query PostgreSQL snapshot_blobs
     stmt = select(SnapshotBlob).where(SnapshotBlob.snapshot_id == snap.snapshot_id)
     blob_row: Optional[SnapshotBlob] = (await db.execute(stmt)).scalars().first()
 
@@ -152,7 +178,7 @@ async def get_snapshot_image_bytes(
             return None, None
         return blob_row.image_data, (snap.mime_type or "image/jpeg")
 
-    # Step 2: Fall back to legacy disk storage
+    # Step 3: Fall back to legacy disk storage
     from app.api.v1.snapshots import resolve_snapshot_path
     disk_path = resolve_snapshot_path(snap)
     if disk_path and disk_path.is_file():
@@ -162,7 +188,7 @@ async def get_snapshot_image_bytes(
             if snap.sha256 and disk_sha != snap.sha256.lower():
                 return None, None
 
-            # Step 3: Auto-migrate verified disk bytes into PostgreSQL
+            # Step 4: Auto-migrate verified disk bytes into PostgreSQL
             if auto_migrate_legacy:
                 try:
                     new_blob = SnapshotBlob(
@@ -182,6 +208,21 @@ async def get_snapshot_image_bytes(
             return None, None
 
     return None, None
+
+
+def get_snapshot_download_url(snap: Snapshot, expires_in: int = 300) -> str:
+    """Generate authenticated short-lived presigned URL if in S3/Neon, or API route."""
+    if not snap or not snap.storage_key:
+        return ""
+    storage_type = os.environ.get("SNAPSHOT_STORAGE_TYPE", settings.SNAPSHOT_STORAGE_TYPE).lower()
+    if snap.storage_key and not snap.storage_key.startswith("postgres://") and not os.path.isabs(snap.storage_key):
+        try:
+            from app.services import s3_storage
+            if storage_type in ("s3", "neon") or s3_storage.is_s3_configured(bucket_type="snapshot"):
+                return s3_storage.generate_presigned_url(snap.storage_key, bucket_type="snapshot", expires_in=expires_in)
+        except Exception:
+            pass
+    return f"/api/v1/snapshots/{snap.snapshot_id}/image"
 
 
 async def has_durable_snapshot_bytes(db: AsyncSession, snap: Snapshot) -> bool:
