@@ -13,3 +13,4 @@ ewmh>=0.1.6; sys_platform=="linux"
 
 # Packaging (optional — needed only for building .exe / AppImage)
 # pyinstaller>=6.0
+cryptography>=42.0.0   # Ed25519 verification of signed authorization leases

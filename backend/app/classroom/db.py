@@ -39,20 +39,28 @@ Path(_default_db_path).parent.mkdir(parents=True, exist_ok=True)
 #    but for the classroom local DB we use sync sessions via run_in_executor
 #    or direct sync calls to keep the setup simple and dependency-minimal).
 # ─────────────────────────────────────────────────────────────────────────────
-classroom_engine = create_engine(
-    f"sqlite:///{_default_db_path}",
-    connect_args={"check_same_thread": False},
-    echo=os.environ.get("APP_ENV") == "development",
-)
+# Production: set CLASSROOM_DATABASE_URL to a SYNC PostgreSQL URL (e.g. postgresql+psycopg2://...)
+# so classroom state survives restarts/redeploys. Unset => local SQLite file (development only).
+_classroom_url = os.environ.get("CLASSROOM_DATABASE_URL", "").strip()
+_is_sqlite = not _classroom_url
+if _is_sqlite:
+    classroom_engine = create_engine(
+        f"sqlite:///{_default_db_path}",
+        connect_args={"check_same_thread": False},
+        echo=os.environ.get("APP_ENV") == "development",
+    )
+else:
+    classroom_engine = create_engine(_classroom_url, pool_pre_ping=True)
 
 
-# Enable WAL mode and foreign keys for every connection
-@event.listens_for(classroom_engine, "connect")
-def _set_sqlite_pragmas(dbapi_conn, _connection_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+if _is_sqlite:
+    # Enable WAL mode and foreign keys for every SQLite connection
+    @event.listens_for(classroom_engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, _connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 ClassroomSessionLocal = sessionmaker(

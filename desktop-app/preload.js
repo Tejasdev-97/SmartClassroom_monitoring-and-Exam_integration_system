@@ -47,8 +47,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Classroom Agent Bridge (Python agent at 127.0.0.1:41732) ──────────────
   // These methods proxy IPC calls to the Python student agent's localhost bridge
   // without exposing Node.js http directly to the renderer.
-  agentStatus: () => ipcRenderer.invoke('agent:status'),
-  agentSetSession: (params) => ipcRenderer.invoke('agent:set-session', params),
-  agentGetCommands: () => ipcRenderer.invoke('agent:get-commands'),
+  agentStatus:      ()       => ipcRenderer.invoke('agent:status'),
+  agentSetSession:  (params) => ipcRenderer.invoke('agent:set-session', params),
+  agentGetCommands: ()       => ipcRenderer.invoke('agent:get-commands'),
   agentCommandResult: (params) => ipcRenderer.invoke('agent:command-result', params),
+
+  // Agent lifecycle — start/stop Python agent from the classroom UI
+  agentLaunch:    (params) => ipcRenderer.invoke('agent:launch', params),
+  agentStop:      ()       => ipcRenderer.invoke('agent:stop'),
+  agentIsRunning: ()       => ipcRenderer.invoke('agent:is-running'),
+  agentPort:      ()       => ipcRenderer.sendSync('agent:port:sync'),
 });

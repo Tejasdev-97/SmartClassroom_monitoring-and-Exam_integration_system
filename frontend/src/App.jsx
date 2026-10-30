@@ -23,31 +23,43 @@ const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const LandingPage = lazy(() => import('./pages/public/LandingPage'));
 
 // ── Student pages ──────────────────────────────────────────────────────────
-const StudentDashboard = lazy(() => import('./pages/student/StudentDashboard'));
-const ExamEntryPage    = lazy(() => import('./pages/student/ExamEntryPage'));
-const ReadinessPage    = lazy(() => import('./pages/student/ReadinessPage'));
-const ExamSessionPage  = lazy(() => import('./pages/student/ExamSessionPage'));
+const StudentDashboard    = lazy(() => import('./pages/student/StudentDashboard'));
+const AvailableExamsPage  = lazy(() => import('./pages/student/AvailableExamsPage'));
+const ExamEntryPage       = lazy(() => import('./pages/student/ExamEntryPage'));
+const AttemptsPage        = lazy(() => import('./pages/student/AttemptsPage'));
+const ResultsPage         = lazy(() => import('./pages/student/ResultsPage'));
+const DeviceStatusPage    = lazy(() => import('./pages/student/DeviceStatusPage'));
+const ReadinessPage       = lazy(() => import('./pages/student/ReadinessPage'));
+const ExamSessionPage     = lazy(() => import('./pages/student/ExamSessionPage'));
 
 // ── Professor pages ────────────────────────────────────────────────────────
-const ProfessorDashboard = lazy(() => import('./pages/professor/ProfessorDashboard'));
-const ExamBuilderPage    = lazy(() => import('./pages/professor/ExamBuilderPage'));
-const ExamMonitorPage    = lazy(() => import('./pages/professor/ExamMonitorPage'));
-const AttemptReviewPage  = lazy(() => import('./pages/professor/AttemptReviewPage'));
-const VideoAnalysisPage  = lazy(() => import('./pages/professor/VideoAnalysisPage'));
+const ProfessorDashboard  = lazy(() => import('./pages/professor/ProfessorDashboard'));
+const ProfessorExamsPage  = lazy(() => import('./pages/professor/ProfessorExamsPage'));
+const ExamBuilderPage     = lazy(() => import('./pages/professor/ExamBuilderPage'));
+const ExamMonitorPage     = lazy(() => import('./pages/professor/ExamMonitorPage'));
+const AttemptReviewPage   = lazy(() => import('./pages/professor/AttemptReviewPage'));
+const VideoAnalysisPage   = lazy(() => import('./pages/professor/VideoAnalysisPage'));
+const SubmissionsPage     = lazy(() => import('./pages/professor/SubmissionsPage'));
+const ReportsPage         = lazy(() => import('./pages/professor/ReportsPage'));
 
-// ── Classroom Monitoring pages (new) ────────────────────────────────────────
+// ── Classroom Monitoring pages ─────────────────────────────────────────────
 const ClassroomPage       = lazy(() => import('./pages/professor/classroom/ClassroomPage'));
 const ClassroomDashboard  = lazy(() => import('./pages/professor/classroom/ClassroomDashboard'));
 const DeviceManagerPage   = lazy(() => import('./pages/professor/classroom/DeviceManagerPage'));
+const LiveMonitoringPage  = lazy(() => import('./pages/professor/classroom/LiveMonitoringPage'));
 
 // ── Admin pages ────────────────────────────────────────────────────────────
-const AdminDashboard   = lazy(() => import('./pages/admin/AdminDashboard'));
-const UserManagement   = lazy(() => import('./pages/admin/UserManagement'));
-const SystemSettings   = lazy(() => import('./pages/admin/SystemSettings'));
-const AuditLogPage     = lazy(() => import('./pages/admin/AuditLogPage'));
+const AdminDashboard      = lazy(() => import('./pages/admin/AdminDashboard'));
+const UserManagement      = lazy(() => import('./pages/admin/UserManagement'));
+const AdminProfessorsPage = lazy(() => import('./pages/admin/AdminProfessorsPage'));
+const AdminExamsPage      = lazy(() => import('./pages/admin/AdminExamsPage'));
+const AdminReportsPage    = lazy(() => import('./pages/admin/AdminReportsPage'));
+const SystemSettings      = lazy(() => import('./pages/admin/SystemSettings'));
+const AuditLogPage        = lazy(() => import('./pages/admin/AuditLogPage'));
 
 // ── Shared ─────────────────────────────────────────────────────────────────
-const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const ProfilePage         = lazy(() => import('./pages/shared/ProfilePage'));
+const NotFoundPage        = lazy(() => import('./pages/NotFoundPage'));
 
 function PageLoader() {
   return (
@@ -93,7 +105,12 @@ export default function App() {
               {/* Student routes */}
               <Route element={<RequireAuth allowedRoles={['student']}><AppLayout /></RequireAuth>}>
                 <Route path="/student" element={<StudentDashboard />} />
+                <Route path="/student/available-exams" element={<AvailableExamsPage />} />
                 <Route path="/student/enter-exam" element={<ExamEntryPage />} />
+                <Route path="/student/attempts" element={<AttemptsPage />} />
+                <Route path="/student/results" element={<ResultsPage />} />
+                <Route path="/student/status" element={<DeviceStatusPage />} />
+                <Route path="/student/profile" element={<ProfilePage />} />
                 <Route path="/student/readiness/:attemptId" element={<ReadinessPage />} />
               </Route>
 
@@ -105,24 +122,37 @@ export default function App() {
               {/* Professor routes */}
               <Route element={<RequireAuth allowedRoles={['professor', 'admin']}><AppLayout /></RequireAuth>}>
                 <Route path="/professor" element={<ProfessorDashboard />} />
+                <Route path="/professor/exams" element={<ProfessorExamsPage />} />
                 <Route path="/professor/exams/new" element={<ExamBuilderPage />} />
                 <Route path="/professor/exams/:examId/edit" element={<ExamBuilderPage />} />
                 <Route path="/professor/exams/:examId/monitor" element={<ExamMonitorPage />} />
-                <Route path="/professor/attempts/:attemptId/review" element={<AttemptReviewPage />} />
+                <Route path="/professor/live-monitoring" element={<LiveMonitoringPage />} />
                 <Route path="/professor/video-analysis" element={<VideoAnalysisPage />} />
-                {/* Classroom monitoring routes */}
+                <Route path="/professor/submissions" element={<SubmissionsPage />} />
+                <Route path="/professor/reports" element={<ReportsPage />} />
                 <Route path="/professor/classroom" element={<ClassroomPage />} />
                 <Route path="/professor/classroom/session/:sessionId" element={<ClassroomDashboard />} />
                 <Route path="/professor/classroom/devices" element={<DeviceManagerPage />} />
+                <Route path="/professor/profile" element={<ProfilePage />} />
+                <Route path="/professor/attempts/:attemptId/review" element={<AttemptReviewPage />} />
               </Route>
 
               {/* Admin routes */}
               <Route element={<RequireAuth allowedRoles={['admin']}><AppLayout /></RequireAuth>}>
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/users" element={<UserManagement />} />
+                <Route path="/admin/professors" element={<AdminProfessorsPage />} />
+                <Route path="/admin/exams" element={<AdminExamsPage />} />
+                <Route path="/admin/classroom" element={<ClassroomPage />} />
+                <Route path="/admin/video-analysis" element={<VideoAnalysisPage />} />
+                <Route path="/admin/reports" element={<AdminReportsPage />} />
                 <Route path="/admin/settings" element={<SystemSettings />} />
                 <Route path="/admin/audit" element={<AuditLogPage />} />
+                <Route path="/admin/profile" element={<ProfilePage />} />
               </Route>
+
+              {/* Shared profile route */}
+              <Route path="/profile" element={<RequireAuth><AppLayout><ProfilePage /></AppLayout></RequireAuth>} />
 
               {/* 404 */}
               <Route path="*" element={<NotFoundPage />} />

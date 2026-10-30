@@ -176,6 +176,10 @@ class DeviceGridCard(BaseModel):
     alert_summary: Dict[str, int]      # {"prohibited_app": 2, "face_absent": 1, ...}
     weighted_severity_score: float     # for automatic grid sorting
     most_recent_alert_at: Optional[datetime]
+    latest_screen_frame: Optional[str] = None
+    latest_webcam_frame: Optional[str] = None
+    last_screen_at: Optional[datetime] = None
+    last_webcam_at: Optional[datetime] = None
 
 
 # ── Alerts ─────────────────────────────────────────────────────────────────────

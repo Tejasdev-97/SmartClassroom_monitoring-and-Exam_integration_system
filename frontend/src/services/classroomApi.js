@@ -3,7 +3,7 @@
  * Wraps all /classroom/* REST calls using the existing configured Axios instance.
  */
 
-import api from '../../../services/api';
+import api from './api';
 
 const BASE = '/classroom';
 
@@ -45,9 +45,20 @@ export const classroomApi = {
   issueCommand: (sessionId, data) => api.post(`${BASE}/sessions/${sessionId}/commands`, data),
   listCommands: (sessionId, params) => api.get(`${BASE}/sessions/${sessionId}/commands`, { params }),
 
-  // Screen thumbnail (for display)
+  // Screen & Webcam frames (for real-time CCTV display)
+  getScreenFrameUrl: (deviceId) =>
+    `${api.defaults.baseURL || '/api/v1'}${BASE}/devices/${deviceId}/screen-frame`,
+  getWebcamFrameUrl: (deviceId) =>
+    `${api.defaults.baseURL || '/api/v1'}${BASE}/devices/${deviceId}/webcam-frame`,
+  uploadWebcamFrame: (data) => api.post(`${BASE}/agent/webcam-frame`, data),
+
   getThumbnailUrl: (deviceId, frameId) =>
-    `${api.defaults.baseURL?.replace('/api/v1', '') || ''}/storage/classroom_thumbnails/${deviceId}/${frameId}.jpg`,
+    `${api.defaults.baseURL || '/api/v1'}${BASE}/devices/${deviceId}/screen-frame`,
+
+  // Reports
+  getSessionReport: (sessionId) => api.get(`${BASE}/sessions/${sessionId}/report`),
+  getReportDownloadUrl: (sessionId, format = 'json') =>
+    `${api.defaults.baseURL || '/api/v1'}${BASE}/sessions/${sessionId}/report/download?format=${format}`,
 };
 
 export default classroomApi;

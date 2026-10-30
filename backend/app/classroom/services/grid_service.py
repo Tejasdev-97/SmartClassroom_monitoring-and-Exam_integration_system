@@ -23,6 +23,7 @@ from app.classroom.models import (
     ClassroomAlert,
 )
 from app.classroom.schemas import DeviceGridCard
+from app.classroom.hub import classroom_hub
 
 # A device is considered STALE (offline) if no heartbeat in this window
 STALE_THRESHOLD_SEC = 15
@@ -129,6 +130,8 @@ def build_grid(db: Session, session_id: str) -> List[DeviceGridCard]:
 
         summary = alert_summary.get(did, {})
         unresolved = sum(summary.values())
+        scr = classroom_hub.get_latest_screen_frame(did)
+        cam = classroom_hub.get_latest_webcam_frame(did)
 
         card = DeviceGridCard(
             assignment_id=assignment.assignment_id,
@@ -151,6 +154,10 @@ def build_grid(db: Session, session_id: str) -> List[DeviceGridCard]:
             alert_summary=summary,
             weighted_severity_score=alert_scores.get(did, 0.0),
             most_recent_alert_at=alert_recent_at.get(did),
+            latest_screen_frame=scr.get("image_b64") if scr else None,
+            latest_webcam_frame=cam.get("image_b64") if cam else None,
+            last_screen_at=scr.get("timestamp") if scr else None,
+            last_webcam_at=cam.get("timestamp") if cam else None,
         )
         cards.append(card)
 

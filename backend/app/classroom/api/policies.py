@@ -83,6 +83,11 @@ def list_policies(
     policies = db.execute(
         select(ClassroomPolicy).order_by(ClassroomPolicy.created_at.desc())
     ).scalars().all()
+    if not policies:
+        seed_default_policy(db)
+        policies = db.execute(
+            select(ClassroomPolicy).order_by(ClassroomPolicy.created_at.desc())
+        ).scalars().all()
     return {"data": [_policy_out(p) for p in policies]}
 
 

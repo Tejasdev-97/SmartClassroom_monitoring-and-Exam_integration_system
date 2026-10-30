@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Integer,
     String, Text, Float, UniqueConstraint, CheckConstraint,
+    LargeBinary,
 )
 from sqlalchemy.orm import relationship
 
@@ -388,3 +389,40 @@ class ClassroomSyncLog(ClassroomBase):
     payload_hash = Column(String(64), nullable=False)
     received_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     status = Column(String(20), nullable=False, default="accepted")  # accepted | rejected | duplicate
+
+
+# ── Warning-based video evidence clips (additive; screenshots are untouched) ──
+
+class VideoEvidenceClip(ClassroomBase):
+    """Short pre-roll/post-roll clip for one or more warning events.
+
+    The binary lives in the configured object store (see app.classroom.services.clip_storage);
+    only metadata and the storage key are kept here.
+    """
+    __tablename__ = "video_evidence_clips"
+
+    clip_id = Column(String(36), primary_key=True)  # client-generated => idempotent upload
+    session_id = Column(String(36), nullable=False, index=True)
+    device_id = Column(String(36), nullable=False, index=True)
+    student_user_id = Column(String(36), nullable=True)
+    exam_id = Column(String(36), nullable=True)
+    attempt_id = Column(String(36), nullable=True)
+    source = Column(String(10), nullable=False)  # screen | webcam
+    event_ids_json = Column(Text, nullable=False, default="[]")  # merged warnings keep every id
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=False)
+    pre_roll_ms = Column(Integer, nullable=False, default=2000)
+    post_roll_ms = Column(Integer, nullable=False, default=2000)
+    mime_type = Column(String(50), nullable=False, default="video/webm")
+    size_bytes = Column(Integer, nullable=False, default=0)
+    sha256 = Column(String(64), nullable=True)
+    storage_backend = Column(String(20), nullable=True)  # local | s3
+    storage_key = Column(String(300), nullable=True)
+    status = Column(String(20), nullable=False, default="finalized")  # finalized | uploaded | failed
+    failure_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    retention_until = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("source IN ('screen','webcam')", name="ck_clip_source"),
+    )

@@ -32,6 +32,7 @@ from app.classroom.models import (
     ClassroomSession,
 )
 from app.classroom.services.alert_service import create_alert
+from app.classroom.hub import classroom_hub
 
 logger = logging.getLogger("classroom.agent")
 router = APIRouter(prefix="/classroom/agent", tags=["Classroom — Agent Events"])
@@ -92,7 +93,7 @@ def _record_sync(db: Session, device_id: str, event_type: str, key: str, payload
 # ── Desktop Activity Event Batch ──────────────────────────────────────────────
 
 @router.post("/events/desktop", summary="Ingest desktop activity events (batch)")
-def ingest_desktop_events(
+async def ingest_desktop_events(
     request: Request,
     db: Session = Depends(get_classroom_db),
 ):
@@ -113,12 +114,10 @@ def ingest_desktop_events(
       ]
     }
     """
-    import asyncio
-
-    # Parse body synchronously (FastAPI sync route reads body via ASGI)
-    body_bytes = request.state._body if hasattr(request.state, "_body") else b"{}"
-    # We need to read the body — use a workaround for sync route
+    raw = await request.body()
+    request.state._body = raw          # keep for _process_desktop_batch
     return _process_desktop_batch(request, db)
+
 
 
 def _process_desktop_batch(request: Request, db: Session) -> dict:
@@ -332,11 +331,20 @@ async def receive_screen_frame(
     if len(image_bytes) > 1_048_576:
         raise BadRequestError("Thumbnail exceeds maximum size of 1 MB.")
 
-    # Store: thumbnails/{device_id}/{frame_id}.jpg
+    # Store: thumbnails/{device_id}/{frame_id}.jpg and latest.jpg
     dev_dir = THUMBNAIL_DIR / device_id
     dev_dir.mkdir(parents=True, exist_ok=True)
     file_path = dev_dir / f"{frame_id}.jpg"
     file_path.write_bytes(image_bytes)
+    latest_path = dev_dir / "latest.jpg"
+    latest_path.write_bytes(image_bytes)
+
+    # Broadcast over WebSocket uplink in real time
+    timestamp = body.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    if session_id:
+        await classroom_hub.broadcast_screen_frame(session_id, device_id, image_b64, timestamp)
+    else:
+        classroom_hub.set_latest_screen_frame(device_id, image_b64, timestamp)
 
     return {
         "data": {
@@ -348,3 +356,60 @@ async def receive_screen_frame(
             "size_bytes": len(image_bytes),
         }
     }
+
+
+@router.post("/webcam-frame", summary="Receive webcam thumbnail from student client")
+async def receive_webcam_frame(
+    request: Request,
+    db: Session = Depends(get_classroom_db),
+):
+    """
+    Body JSON:
+      device_id, session_id, student_user_id, image_b64 (JPEG base64), timestamp
+    Stores latest webcam thumbnail and broadcasts in real time to the professor dashboard.
+    """
+    raw = await request.body()
+    try:
+        body = json.loads(raw)
+    except Exception:
+        raise BadRequestError("Invalid JSON body.")
+
+    device_id = body.get("device_id", "")
+    session_id = body.get("session_id")
+    student_user_id = body.get("student_user_id")
+    image_b64 = body.get("image_b64", "")
+    timestamp = body.get("timestamp") or datetime.now(timezone.utc).isoformat()
+
+    if not image_b64 or not device_id:
+        raise BadRequestError("device_id and image_b64 are required.")
+
+    try:
+        image_bytes = base64.b64decode(image_b64)
+    except Exception:
+        raise BadRequestError("Invalid base64 image data.")
+
+    # Max 512 KB per webcam thumbnail
+    if len(image_bytes) > 524_288:
+        raise BadRequestError("Webcam thumbnail exceeds maximum size of 512 KB.")
+
+    dev_dir = THUMBNAIL_DIR / device_id
+    dev_dir.mkdir(parents=True, exist_ok=True)
+    latest_cam = dev_dir / "webcam_latest.jpg"
+    latest_cam.write_bytes(image_bytes)
+
+    if session_id:
+        await classroom_hub.broadcast_webcam_frame(
+            session_id, device_id, image_b64, timestamp, student_user_id
+        )
+    else:
+        classroom_hub.set_latest_webcam_frame(device_id, image_b64, timestamp, student_user_id)
+
+    return {
+        "data": {
+            "device_id": device_id,
+            "session_id": session_id,
+            "stored": True,
+            "size_bytes": len(image_bytes),
+        }
+    }
+

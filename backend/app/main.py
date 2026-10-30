@@ -29,14 +29,22 @@ from app.classroom.api import (
     policies as classroom_policies,
     agent_events as classroom_agent_events,
     ws as classroom_ws,
+    clips as classroom_clips,
+    lease as classroom_lease,
 )
 
 
 class _BodyCacheMiddleware(BaseHTTPMiddleware):
-    """Cache request body bytes so sync agent endpoints can re-read it."""
+    """
+    Cache request body bytes for classroom agent event endpoints that use
+    synchronous route handlers (which cannot call await request.body() directly).
+    IMPORTANT: Only activates for /api/v1/classroom/agent/* paths to avoid
+    interfering with existing multipart uploads and large file ingestion.
+    """
     async def dispatch(self, request: Request, call_next):
-        body = await request.body()
-        request.state._body = body
+        if request.url.path.startswith("/api/v1/classroom/agent/events/"):
+            body = await request.body()
+            request.state._body = body
         return await call_next(request)
 
 
@@ -110,6 +118,8 @@ app.include_router(classroom_alerts.router,         prefix=PREFIX)
 app.include_router(classroom_commands.session_router, prefix=PREFIX)
 app.include_router(classroom_commands.device_router,  prefix=PREFIX)
 app.include_router(classroom_agent_events.router,   prefix=PREFIX)
+app.include_router(classroom_clips.router,          prefix=PREFIX)
+app.include_router(classroom_lease.router,          prefix=PREFIX)
 app.include_router(classroom_ws.router)                 # WS paths: no prefix
 
 

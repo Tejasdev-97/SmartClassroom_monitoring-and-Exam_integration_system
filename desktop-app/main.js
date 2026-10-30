@@ -314,13 +314,113 @@ ipcMain.handle('screen-capture:stop-session', () => {
 // student agent via the localhost HTTP bridge, without directly exposing Node.js.
 
 const http = require('http');
+const { spawn, execSync } = require('child_process');
+
+// ── Python Agent Process Management ──────────────────────────────────────────
+let _agentProcess = null;   // child_process.ChildProcess or null
+let _agentPort    = 41732;  // default; may be reassigned if port is taken
+
+/**
+ * Check if a TCP port is free by attempting a quick connection.
+ * Returns Promise<boolean> — true if free.
+ */
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const tester = require('net').createConnection({ port, host: '127.0.0.1' });
+    tester.once('error', () => resolve(true));
+    tester.once('connect', () => { tester.destroy(); resolve(false); });
+  });
+}
+
+/**
+ * Find a free port starting from `start`.
+ */
+async function findFreePort(start = 41732, maxTry = 20) {
+  for (let p = start; p < start + maxTry; p++) {
+    if (await isPortFree(p)) return p;
+  }
+  return start; // fall back
+}
+
+/**
+ * Locate the Python executable to use.
+ * Prefer a venv inside student-agent/, then fall back to system python3/python.
+ */
+function findPython() {
+  const isWin = process.platform === 'win32';
+  const agentDir = path.join(__dirname, '..', 'student-agent');
+  const venvPython = isWin
+    ? path.join(agentDir, '.venv', 'Scripts', 'python.exe')
+    : path.join(agentDir, '.venv', 'bin', 'python3');
+  if (fs.existsSync(venvPython)) return venvPython;
+  return isWin ? 'python' : 'python3';
+}
+
+/**
+ * Start the Python student agent.
+ * Safe to call multiple times — will not spawn a second process if one is running.
+ */
+async function startAgent(serverUrl) {
+  if (_agentProcess && _agentProcess.exitCode === null) {
+    console.log('[Agent] Already running (pid', _agentProcess.pid, ')');
+    return { ok: true, pid: _agentProcess.pid, port: _agentPort };
+  }
+
+  const port = await findFreePort(41732);
+  _agentPort = port;
+
+  const python  = findPython();
+  const agentDir = path.join(__dirname, '..', 'student-agent');
+  const agentScript = path.join(agentDir, 'agent.py');
+
+  if (!fs.existsSync(agentScript)) {
+    console.error('[Agent] agent.py not found at', agentScript);
+    return { ok: false, error: 'agent.py not found' };
+  }
+
+  const args = ['agent.py', '--bridge-port', String(port)];
+  if (serverUrl) args.push('--server', serverUrl);
+
+  _agentProcess = spawn(python, args, {
+    cwd:   agentDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  _agentProcess.stdout.on('data', (d) => console.log('[Agent]', d.toString().trim()));
+  _agentProcess.stderr.on('data', (d) => console.error('[Agent ERR]', d.toString().trim()));
+  _agentProcess.on('exit', (code) => {
+    console.log('[Agent] Exited with code', code);
+    _agentProcess = null;
+  });
+
+  console.log('[Agent] Spawned pid', _agentProcess.pid, 'on bridge port', port);
+  return { ok: true, pid: _agentProcess.pid, port };
+}
+
+/**
+ * Stop the Python student agent gracefully (SIGTERM, then SIGKILL after 3 s).
+ */
+function stopAgent() {
+  if (!_agentProcess) return;
+  try {
+    _agentProcess.kill('SIGTERM');
+    const timeout = setTimeout(() => {
+      if (_agentProcess) _agentProcess.kill('SIGKILL');
+    }, 3000);
+    _agentProcess.once('exit', () => clearTimeout(timeout));
+  } catch (e) {
+    console.error('[Agent] Stop error:', e.message);
+  }
+  _agentProcess = null;
+}
 
 function agentBridgeRequest(method, path, body) {
   return new Promise((resolve, reject) => {
     const bodyStr = body ? JSON.stringify(body) : '';
     const opts = {
       hostname: '127.0.0.1',
-      port: 41732,
+      port: _agentPort,  // use dynamic port resolved at launch
       path,
       method,
       headers: {
@@ -381,6 +481,30 @@ ipcMain.handle('agent:command-result', async (_event, params) => {
   }
 });
 
+// Launch / stop agent via IPC (React UI calls this when a session starts)
+ipcMain.handle('agent:launch', async (_event, { serverUrl } = {}) => {
+  return await startAgent(serverUrl);
+});
+
+ipcMain.handle('agent:stop', () => {
+  stopAgent();
+  return { ok: true };
+});
+
+ipcMain.handle('agent:is-running', () => ({
+  running: Boolean(_agentProcess && _agentProcess.exitCode === null),
+  port:    _agentPort,
+}));
+
+/** Return the current agent bridge port (sync — called from renderer via sendSync) */
+ipcMain.on('agent:port:sync', (event) => {
+  event.returnValue = _agentPort;
+});
+
+/** Return the current agent bridge port (async — for completeness) */
+ipcMain.handle('agent:port', () => _agentPort);
+
+
 // App lifecycle
 app.whenReady().then(() => {
   createWindow();
@@ -393,7 +517,10 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopAgent();   // always clean up agent on exit
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
+
+app.on('before-quit', () => stopAgent());

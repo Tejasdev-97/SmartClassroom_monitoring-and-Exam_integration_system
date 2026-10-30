@@ -68,12 +68,14 @@ def _cmd_out(c: InstructorCommand) -> dict:
 # ── Professor issues a command ─────────────────────────────────────────────────
 
 @session_router.post("/{session_id}/commands", summary="Issue instructor command")
-def issue_command(
+async def issue_command(
     session_id: str = Path(...),
     body: CommandCreate = ...,
     prof: dict = Depends(ProfessorUser),
     db: Session = Depends(get_classroom_db),
 ):
+    from app.classroom.hub import classroom_hub
+
     s = db.get(ClassroomSession, session_id)
     if not s or s.instructor_user_id != prof["sub"]:
         raise NotFoundError("Session")
@@ -106,9 +108,35 @@ def issue_command(
     db.add(cmd)
     db.flush()
 
+    # Deliver immediately over WebSocket if target device(s) are connected
+    now = datetime.now(timezone.utc)
+    cmd_data = _cmd_out(cmd)
+    if body.target_device_id:
+        delivered = await classroom_hub.send_command_to_device(body.target_device_id, cmd_data)
+        if delivered:
+            cmd.delivery_status = "delivered"
+            cmd.delivered_at = now
+            db.flush()
+    else:
+        # Broadcast to all active devices in session
+        assignments = db.execute(
+            select(ClassroomSessionDevice).where(
+                ClassroomSessionDevice.session_id == session_id,
+                ClassroomSessionDevice.status == "active",
+            )
+        ).scalars().all()
+        any_delivered = False
+        for a in assignments:
+            if await classroom_hub.send_command_to_device(a.device_id, cmd_data):
+                any_delivered = True
+        if any_delivered:
+            cmd.delivery_status = "delivered"
+            cmd.delivered_at = now
+            db.flush()
+
     logger.info(
-        "Command issued: %s type=%s target=%s session=%s",
-        cmd.command_id, body.command_type, body.target_device_id or "BROADCAST", session_id,
+        "Command issued: %s type=%s target=%s session=%s delivered=%s",
+        cmd.command_id, body.command_type, body.target_device_id or "BROADCAST", session_id, cmd.delivery_status,
     )
     return {"data": _cmd_out(cmd)}
 

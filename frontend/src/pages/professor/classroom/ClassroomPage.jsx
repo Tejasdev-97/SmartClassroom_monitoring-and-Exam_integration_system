@@ -1,105 +1,276 @@
 /**
- * ExamProctor.ai — Classroom Sessions Overview Page.
- * Professor can create, view, and manage classroom monitoring sessions.
+ * ExamProctor.ai — Classroom Sessions Overview Page
+ * Neo-Brutalism visual alignment with existing Professor Dashboard.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  Monitor, Plus, Play, Pause, Square, ExternalLink, HardDrive,
+  Users, AlertTriangle, Clock, X, CheckCircle, ShieldCheck
+} from 'lucide-react';
 import classroomApi from '../../../services/classroomApi';
+import styles from './ClassroomPage.module.css';
 
-const STATUS_BADGE = {
-  pending:  { label: 'Pending',  color: '#f59e0b' },
-  active:   { label: 'Active',   color: '#22c55e' },
-  paused:   { label: 'Paused',   color: '#3b82f6' },
-  ended:    { label: 'Ended',    color: '#6b7280' },
-};
-
-function StatusBadge({ status }) {
-  const cfg = STATUS_BADGE[status] || { label: status, color: '#6b7280' };
+function SessionStatusBadge({ status }) {
+  if (status === 'active') {
+    return (
+      <span className="badge badge-green">
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
+        Active
+      </span>
+    );
+  }
+  if (status === 'paused') {
+    return (
+      <span className="badge badge-yellow">
+        <Pause size={12} />
+        Paused
+      </span>
+    );
+  }
+  if (status === 'ended') {
+    return (
+      <span className="badge" style={{ color: 'var(--color-text-secondary)', background: 'var(--color-surface-alt)' }}>
+        <Square size={10} />
+        Ended
+      </span>
+    );
+  }
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '3px 10px', borderRadius: 20,
-      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em',
-      background: cfg.color + '22', color: cfg.color,
-      border: `1px solid ${cfg.color}44`,
-    }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.color,
-        boxShadow: status === 'active' ? `0 0 6px ${cfg.color}` : 'none',
-        animation: status === 'active' ? 'pulse 2s infinite' : 'none',
-      }} />
-      {cfg.label}
+    <span className="badge badge-orange">
+      <Clock size={12} />
+      Pending
     </span>
   );
 }
 
 function CreateSessionModal({ policies, onClose, onCreate }) {
-  const [form, setForm] = useState({ room_name: '', policy_id: '', exam_id: '', offline_auth_minutes: 120 });
+  const [form, setForm] = useState({
+    room_name: '',
+    policy_id: policies[0]?.policy_id || '',
+    exam_id: '',
+    offline_auth_minutes: 120,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [approvedDevices, setApprovedDevices] = useState([]);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState([]);
+  const [devicesLoading, setDevicesLoading] = useState(true);
+
+  useEffect(() => {
+    if (policies.length > 0 && !form.policy_id) {
+      setForm((f) => ({ ...f, policy_id: policies[0].policy_id }));
+    }
+  }, [policies, form.policy_id]);
+
+  // Load approved devices for selection
+  useEffect(() => {
+    setDevicesLoading(true);
+    classroomApi.listDevices({ enrollment_status: 'approved' })
+      .then(({ data }) => {
+        const devices = data?.data || [];
+        setApprovedDevices(devices);
+        // Pre-select all approved devices
+        setSelectedDeviceIds(devices.map((d) => d.device_id));
+      })
+      .catch(() => setApprovedDevices([]))
+      .finally(() => setDevicesLoading(false));
+  }, []);
+
+  const toggleDevice = (deviceId) => {
+    setSelectedDeviceIds((prev) =>
+      prev.includes(deviceId)
+        ? prev.filter((id) => id !== deviceId)
+        : [...prev, deviceId]
+    );
+  };
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.room_name || !form.policy_id) { setError('Room name and policy are required.'); return; }
-    setLoading(true); setError('');
+    if (!form.room_name || !form.policy_id) {
+      setError('Room name and policy are required.');
+      return;
+    }
+    setLoading(true);
+    setError('');
     try {
+      // 1. Create the session
       const { data } = await classroomApi.createSession({
         room_name: form.room_name,
         policy_id: form.policy_id,
         exam_id: form.exam_id || undefined,
-        offline_auth_minutes: parseInt(form.offline_auth_minutes) || 120,
+        offline_auth_minutes: parseInt(form.offline_auth_minutes, 10) || 120,
       });
-      onCreate(data.data);
+      const session = data.data;
+
+      // 2. Assign selected approved devices to the session immediately
+      if (selectedDeviceIds.length > 0 && session?.session_id) {
+        const assignments = selectedDeviceIds.map((device_id) => ({
+          device_id,
+          student_user_id: null,
+          student_name: null,
+          student_usn: null,
+          attempt_id: null,
+        }));
+        try {
+          await classroomApi.assignDevices(session.session_id, assignments);
+        } catch (assignErr) {
+          // Non-fatal: session created, devices not assigned — professor can retry
+          console.warn('[Classroom] Device assignment after session creation failed:', assignErr?.message);
+        }
+      }
+
+      onCreate(session);
       onClose();
-    } catch (e) {
-      setError(e?.response?.data?.error?.message || 'Failed to create session.');
+    } catch (err) {
+      setError(err?.response?.data?.error?.message || 'Failed to create session.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div style={{
-        background: 'var(--color-card)', borderRadius: 16, padding: 32, width: 480,
-        border: '1px solid var(--color-border)',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-      }}>
-        <h2 style={{ margin: '0 0 24px', fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-          New Classroom Session
-        </h2>
-        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={labelStyle}>Room / Lab Name *</label>
-            <input style={inputStyle} value={form.room_name} placeholder="e.g. Lab 101"
-              onChange={e => setForm(f => ({ ...f, room_name: e.target.value }))} />
+    <div className={styles.modalBackdrop} onClick={onClose}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className={styles.modalHeader}>
+          <div className={styles.modalTitle}>New Classroom Session</div>
+          <button className={styles.modalCloseBtn} onClick={onClose} aria-label="Close dialog">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="input-room-name">Room / Lab Name *</label>
+            <input
+              id="input-room-name"
+              className="form-input"
+              value={form.room_name}
+              placeholder="e.g. Lab 101 — Computer Science"
+              onChange={(e) => setForm((f) => ({ ...f, room_name: e.target.value }))}
+              required
+            />
           </div>
-          <div>
-            <label style={labelStyle}>Monitoring Policy *</label>
-            <select style={inputStyle} value={form.policy_id}
-              onChange={e => setForm(f => ({ ...f, policy_id: e.target.value }))}>
-              <option value="">— Select a policy —</option>
-              {policies.map(p => <option key={p.policy_id} value={p.policy_id}>{p.name}</option>)}
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="select-policy">Monitoring Policy *</label>
+            <select
+              id="select-policy"
+              className="form-select"
+              value={form.policy_id}
+              onChange={(e) => setForm((f) => ({ ...f, policy_id: e.target.value }))}
+              required
+            >
+              <option value="">— Select an integrity policy —</option>
+              {policies.map((p) => (
+                <option key={p.policy_id} value={p.policy_id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </div>
-          <div>
-            <label style={labelStyle}>Linked Exam ID (optional)</label>
-            <input style={inputStyle} value={form.exam_id} placeholder="Leave blank for standalone monitoring"
-              onChange={e => setForm(f => ({ ...f, exam_id: e.target.value }))} />
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="input-exam-id">Linked Exam ID (optional)</label>
+            <input
+              id="input-exam-id"
+              className="form-input"
+              value={form.exam_id}
+              placeholder="Leave blank for standalone monitoring"
+              onChange={(e) => setForm((f) => ({ ...f, exam_id: e.target.value }))}
+            />
           </div>
-          <div>
-            <label style={labelStyle}>Offline Auth Window (minutes)</label>
-            <input type="number" style={inputStyle} value={form.offline_auth_minutes} min={10} max={480}
-              onChange={e => setForm(f => ({ ...f, offline_auth_minutes: e.target.value }))} />
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="input-offline-auth">Offline Auth Lease Window (minutes)</label>
+            <input
+              id="input-offline-auth"
+              type="number"
+              className="form-input"
+              value={form.offline_auth_minutes}
+              min={10}
+              max={480}
+              onChange={(e) => setForm((f) => ({ ...f, offline_auth_minutes: e.target.value }))}
+            />
+            <span className="form-hint">Allows student agents to operate through temporary network drops.</span>
           </div>
-          {error && <p style={{ color: '#ef4444', fontSize: 13, margin: 0 }}>{error}</p>}
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button type="button" onClick={onClose} style={cancelBtnStyle}>Cancel</button>
-            <button type="submit" disabled={loading} style={primaryBtnStyle}>
-              {loading ? 'Creating…' : 'Create Session'}
+
+          {/* ── Device Assignment ─────────────────────────────────────────── */}
+          <div className="form-group">
+            <label className="form-label">
+              <HardDrive size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              Assign Approved Student Devices
+            </label>
+            {devicesLoading ? (
+              <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem', padding: '8px 0' }}>
+                Loading devices…
+              </div>
+            ) : approvedDevices.length === 0 ? (
+              <div className="alert alert-info" style={{ fontSize: '0.85rem' }}>
+                No approved devices found. Register and approve student workstations in the Device Manager first.
+              </div>
+            ) : (
+              <div style={{
+                border: '2px solid var(--neo-border)',
+                borderRadius: 'var(--radius-sm)',
+                maxHeight: 180,
+                overflowY: 'auto',
+                background: 'var(--color-surface)',
+              }}>
+                {approvedDevices.map((device) => (
+                  <label
+                    key={device.device_id}
+                    htmlFor={`device-chk-${device.device_id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--color-border)',
+                      fontSize: '0.875rem',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <input
+                      id={`device-chk-${device.device_id}`}
+                      type="checkbox"
+                      checked={selectedDeviceIds.includes(device.device_id)}
+                      onChange={() => toggleDevice(device.device_id)}
+                      style={{ width: 16, height: 16, accentColor: 'var(--neo-accent)' }}
+                    />
+                    <HardDrive size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600 }}>{device.hostname}</span>
+                    {device.workstation_label && (
+                      <span style={{ color: 'var(--color-text-secondary)', marginLeft: 4 }}>
+                        — {device.workstation_label}
+                      </span>
+                    )}
+                    {device.room_name && (
+                      <span className="badge badge-blue" style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>
+                        {device.room_name}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            )}
+            {approvedDevices.length > 0 && (
+              <span className="form-hint">
+                {selectedDeviceIds.length} of {approvedDevices.length} device(s) selected for monitoring.
+              </span>
+            )}
+          </div>
+
+          {error && <div className="alert alert-error">{error}</div>}
+
+          <div className={styles.modalFooter}>
+            <button type="button" onClick={onClose} className="btn btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" disabled={loading} className="btn btn-primary" id="btn-create-session-submit">
+              {loading ? 'Creating Session…' : 'Create & Assign'}
             </button>
           </div>
         </form>
@@ -108,20 +279,7 @@ function CreateSessionModal({ policies, onClose, onCreate }) {
   );
 }
 
-const labelStyle = { display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' };
-const inputStyle = {
-  width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)',
-  background: 'var(--color-input-bg, #1a1f2e)', color: 'var(--color-text-primary)',
-  fontSize: 14, boxSizing: 'border-box', outline: 'none',
-};
-const primaryBtnStyle = {
-  padding: '10px 24px', borderRadius: 8, border: 'none', cursor: 'pointer',
-  background: 'var(--color-accent, #6366f1)', color: '#fff', fontWeight: 700, fontSize: 14,
-};
-const cancelBtnStyle = {
-  padding: '10px 24px', borderRadius: 8, border: '1px solid var(--color-border)',
-  background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 14,
-};
+
 
 export default function ClassroomPage() {
   const navigate = useNavigate();
@@ -146,150 +304,207 @@ export default function ClassroomPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const handleAction = async (sessionId, action) => {
-    setActionLoading(l => ({ ...l, [sessionId]: action }));
+    setActionLoading((l) => ({ ...l, [sessionId]: action }));
     try {
       if (action === 'start') await classroomApi.startSession(sessionId);
       if (action === 'pause') await classroomApi.pauseSession(sessionId);
-      if (action === 'end') { if (!window.confirm('End this session? This cannot be undone.')) return; await classroomApi.endSession(sessionId); }
+      if (action === 'end') {
+        if (!window.confirm('End this classroom session? This action will finalize all monitoring.')) return;
+        await classroomApi.endSession(sessionId);
+      }
       await load();
     } catch (e) {
       alert(e?.response?.data?.error?.message || 'Action failed.');
     } finally {
-      setActionLoading(l => ({ ...l, [sessionId]: null }));
+      setActionLoading((l) => ({ ...l, [sessionId]: null }));
     }
   };
 
+  const activeSessionsCount = sessions.filter((s) => s.status === 'active').length;
+  const pendingSessionsCount = sessions.filter((s) => s.status === 'pending').length;
+  const totalSessionsCount = sessions.length;
+
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1200, margin: '0 auto' }}>
+    <div className={styles.page}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+      <div className={styles.header}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-            🖥️ Classroom Monitoring
-          </h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--color-text-secondary)', fontSize: 14 }}>
-            Create and manage live classroom proctoring sessions
+          <h1 className={styles.title}>Classroom Monitoring</h1>
+          <p className={styles.subtitle}>
+            Oversee physical laboratory workstations and real-time examination sessions
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Link to="/professor/classroom/devices" style={{
-            ...cancelBtnStyle, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8,
-          }}>
-            🔌 Manage Devices
+
+        <div className={styles.headerActions}>
+          <Link to="/professor/classroom/devices" className="btn btn-secondary">
+            <HardDrive size={16} />
+            <span>Manage Devices</span>
           </Link>
-          <button onClick={() => setShowCreate(true)} style={{ ...primaryBtnStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
-            + New Session
+          <button
+            onClick={() => setShowCreate(true)}
+            className="btn btn-primary"
+            id="btn-new-classroom-session"
+          >
+            <Plus size={16} />
+            <span>New Session</span>
           </button>
         </div>
       </div>
 
-      {/* Loading */}
-      {loading && (
-        <div style={{ textAlign: 'center', padding: 80, color: 'var(--color-text-secondary)' }}>
-          <div className="spinner" style={{ margin: '0 auto 16px' }} />
-          Loading sessions…
+      {/* Stats summary row */}
+      <div className={styles.statsRow}>
+        <div className={`${styles.statCard} ${styles.statGreen}`}>
+          <Play size={24} />
+          <div className={styles.statValue}>{activeSessionsCount}</div>
+          <div className={styles.statLabel}>Active Sessions</div>
         </div>
-      )}
-
-      {/* Sessions grid */}
-      {!loading && sessions.length === 0 && (
-        <div style={{
-          textAlign: 'center', padding: '80px 40px',
-          border: '2px dashed var(--color-border)', borderRadius: 16,
-          color: 'var(--color-text-secondary)',
-        }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
-          <h3 style={{ margin: '0 0 8px', color: 'var(--color-text-primary)' }}>No Sessions Yet</h3>
-          <p style={{ margin: '0 0 20px' }}>Create your first classroom monitoring session to get started.</p>
-          <button onClick={() => setShowCreate(true)} style={primaryBtnStyle}>+ Create First Session</button>
+        <div className={`${styles.statCard} ${styles.statOrange}`}>
+          <Clock size={24} />
+          <div className={styles.statValue}>{pendingSessionsCount}</div>
+          <div className={styles.statLabel}>Pending Sessions</div>
         </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
-        {sessions.map(s => (
-          <div key={s.session_id} style={{
-            background: 'var(--color-card)', borderRadius: 16, padding: 24,
-            border: `1px solid ${s.status === 'active' ? '#22c55e33' : 'var(--color-border)'}`,
-            boxShadow: s.status === 'active' ? '0 0 0 1px #22c55e33' : 'none',
-            transition: 'box-shadow 0.2s',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--color-text-primary)', marginBottom: 4 }}>
-                  {s.room_name}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontFamily: 'monospace' }}>
-                  {s.session_id.slice(0, 8)}…
-                </div>
-              </div>
-              <StatusBadge status={s.status} />
-            </div>
-
-            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {s.started_at && <span>▶ Started {new Date(s.started_at).toLocaleString()}</span>}
-              {s.ended_at && <span>⏹ Ended {new Date(s.ended_at).toLocaleString()}</span>}
-              {s.exam_id && <span>📝 Linked Exam: {s.exam_id.slice(0, 8)}…</span>}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {s.status !== 'ended' && (
-                <button onClick={() => navigate(`/professor/classroom/session/${s.session_id}`)} style={{
-                  ...primaryBtnStyle, padding: '8px 16px', fontSize: 13, flex: 1,
-                }}>
-                  🎛️ Open Dashboard
-                </button>
-              )}
-              {s.status === 'pending' && (
-                <button onClick={() => handleAction(s.session_id, 'start')}
-                  disabled={actionLoading[s.session_id] === 'start'}
-                  style={{ ...cancelBtnStyle, padding: '8px 16px', fontSize: 13, color: '#22c55e', borderColor: '#22c55e44' }}>
-                  {actionLoading[s.session_id] === 'start' ? '…' : '▶ Start'}
-                </button>
-              )}
-              {s.status === 'active' && (
-                <>
-                  <button onClick={() => handleAction(s.session_id, 'pause')}
-                    disabled={actionLoading[s.session_id] === 'pause'}
-                    style={{ ...cancelBtnStyle, padding: '8px 16px', fontSize: 13, color: '#f59e0b', borderColor: '#f59e0b44' }}>
-                    ⏸ Pause
-                  </button>
-                  <button onClick={() => handleAction(s.session_id, 'end')}
-                    disabled={actionLoading[s.session_id] === 'end'}
-                    style={{ ...cancelBtnStyle, padding: '8px 16px', fontSize: 13, color: '#ef4444', borderColor: '#ef444444' }}>
-                    ⏹ End
-                  </button>
-                </>
-              )}
-              {s.status === 'paused' && (
-                <button onClick={() => handleAction(s.session_id, 'start')}
-                  disabled={actionLoading[s.session_id] === 'start'}
-                  style={{ ...cancelBtnStyle, padding: '8px 16px', fontSize: 13, color: '#22c55e', borderColor: '#22c55e44' }}>
-                  ▶ Resume
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+        <div className={`${styles.statCard} ${styles.statBlue}`}>
+          <Monitor size={24} />
+          <div className={styles.statValue}>{totalSessionsCount}</div>
+          <div className={styles.statLabel}>Total Rooms Enrolled</div>
+        </div>
       </div>
 
-      {/* Create modal */}
+      {/* Loading state */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: 'var(--space-12)' }}>
+          <div className="spinner spinner-lg" style={{ margin: '0 auto var(--space-4)' }} />
+          <p style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>Loading classroom sessions…</p>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && sessions.length === 0 && (
+        <div className={styles.emptyState}>
+          <Monitor size={48} />
+          <h3>No Classroom Sessions Yet</h3>
+          <p>Create your first classroom session to begin monitoring student workstations in real time.</p>
+          <button onClick={() => setShowCreate(true)} className="btn btn-primary">
+            <Plus size={16} />
+            <span>Create First Session</span>
+          </button>
+        </div>
+      )}
+
+      {/* Sessions Grid */}
+      {!loading && sessions.length > 0 && (
+        <div className={styles.sessionsGrid}>
+          {sessions.map((s) => {
+            const isActive = s.status === 'active';
+            return (
+              <div
+                key={s.session_id}
+                className={`${styles.sessionCard} ${isActive ? styles.sessionCardActive : ''}`}
+              >
+                <div className={styles.sessionHeader}>
+                  <div>
+                    <div className={styles.roomName}>{s.room_name}</div>
+                    <div className={styles.sessionId}>ID: {s.session_id.slice(0, 8)}…</div>
+                  </div>
+                  <SessionStatusBadge status={s.status} />
+                </div>
+
+                <div className={styles.sessionMeta}>
+                  {s.started_at && (
+                    <div className={styles.sessionMetaItem}>
+                      <Clock size={14} />
+                      <span>Started: {new Date(s.started_at).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {s.ended_at && (
+                    <div className={styles.sessionMetaItem}>
+                      <Square size={14} />
+                      <span>Ended: {new Date(s.ended_at).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {s.exam_id && (
+                    <div className={styles.sessionMetaItem}>
+                      <ShieldCheck size={14} />
+                      <span>Linked Exam: <code style={{ fontFamily: 'monospace' }}>{s.exam_id.slice(0, 8)}…</code></span>
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.sessionActions}>
+                  {s.status !== 'ended' && (
+                    <button
+                      onClick={() => navigate(`/professor/classroom/session/${s.session_id}`)}
+                      className="btn btn-primary btn-sm"
+                      style={{ flex: 1 }}
+                      id={`btn-open-dashboard-${s.session_id}`}
+                    >
+                      <ExternalLink size={14} />
+                      <span>Open Live CCTV</span>
+                    </button>
+                  )}
+
+                  {s.status === 'pending' && (
+                    <button
+                      onClick={() => handleAction(s.session_id, 'start')}
+                      disabled={actionLoading[s.session_id] === 'start'}
+                      className="btn btn-success btn-sm"
+                    >
+                      <Play size={14} />
+                      <span>{actionLoading[s.session_id] === 'start' ? '…' : 'Start'}</span>
+                    </button>
+                  )}
+
+                  {s.status === 'active' && (
+                    <>
+                      <button
+                        onClick={() => handleAction(s.session_id, 'pause')}
+                        disabled={actionLoading[s.session_id] === 'pause'}
+                        className="btn btn-orange btn-sm"
+                      >
+                        <Pause size={14} />
+                        <span>{actionLoading[s.session_id] === 'pause' ? '…' : 'Pause'}</span>
+                      </button>
+                      <button
+                        onClick={() => handleAction(s.session_id, 'end')}
+                        disabled={actionLoading[s.session_id] === 'end'}
+                        className="btn btn-danger btn-sm"
+                      >
+                        <Square size={14} />
+                        <span>{actionLoading[s.session_id] === 'end' ? '…' : 'End'}</span>
+                      </button>
+                    </>
+                  )}
+
+                  {s.status === 'paused' && (
+                    <button
+                      onClick={() => handleAction(s.session_id, 'start')}
+                      disabled={actionLoading[s.session_id] === 'start'}
+                      className="btn btn-success btn-sm"
+                    >
+                      <Play size={14} />
+                      <span>{actionLoading[s.session_id] === 'start' ? '…' : 'Resume'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create Modal */}
       {showCreate && (
         <CreateSessionModal
           policies={policies}
           onClose={() => setShowCreate(false)}
-          onCreate={(s) => setSessions(prev => [s, ...prev])}
+          onCreate={(s) => setSessions((prev) => [s, ...prev])}
         />
       )}
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-      `}</style>
     </div>
   );
 }

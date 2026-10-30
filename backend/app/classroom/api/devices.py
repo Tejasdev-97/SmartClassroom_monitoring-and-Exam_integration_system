@@ -162,17 +162,23 @@ def approve_device(
 
 
 @router.post("/{device_id}/revoke", summary="Professor revokes a device")
-def revoke_device(
+async def revoke_device(
     device_id: str = Path(...),
     _prof: dict = Depends(ProfessorUser),
     db: Session = Depends(get_classroom_db),
 ):
+    from app.classroom.hub import classroom_hub
+
     device = db.get(ClassroomDevice, device_id)
     if not device:
         raise NotFoundError("Device")
     device.enrollment_status = "revoked"
     device.current_status = "offline"
     db.flush()
+
+    # Terminate active websocket streaming immediately
+    await classroom_hub.disconnect_agent(device_id, "Device revoked by instructor")
+
     return {"data": {"device_id": device_id, "enrollment_status": "revoked"}}
 
 
@@ -224,3 +230,54 @@ def device_heartbeat(
     db.flush()
 
     return {"data": {"status": "ok", "server_time": datetime.now(timezone.utc).isoformat()}}
+
+
+@router.get("/{device_id}/screen-frame", summary="Get latest screen frame for workstation")
+def get_device_screen_frame(
+    device_id: str = Path(...),
+    _prof: dict = Depends(ProfessorUser),
+    db: Session = Depends(get_classroom_db),
+):
+    from fastapi.responses import FileResponse, Response
+    from app.classroom.api.agent_events import THUMBNAIL_DIR
+    from app.classroom.hub import classroom_hub
+    import base64
+
+    # 1. Check in-memory cache
+    cached = classroom_hub.get_latest_screen_frame(device_id)
+    if cached and cached.get("image_b64"):
+        raw = base64.b64decode(cached["image_b64"])
+        return Response(content=raw, media_type="image/jpeg")
+
+    # 2. Check disk
+    latest = THUMBNAIL_DIR / device_id / "latest.jpg"
+    if latest.is_file():
+        return FileResponse(str(latest), media_type="image/jpeg")
+
+    raise NotFoundError("Screen frame")
+
+
+@router.get("/{device_id}/webcam-frame", summary="Get latest webcam frame for workstation")
+def get_device_webcam_frame(
+    device_id: str = Path(...),
+    _prof: dict = Depends(ProfessorUser),
+    db: Session = Depends(get_classroom_db),
+):
+    from fastapi.responses import FileResponse, Response
+    from app.classroom.api.agent_events import THUMBNAIL_DIR
+    from app.classroom.hub import classroom_hub
+    import base64
+
+    # 1. Check in-memory cache
+    cached = classroom_hub.get_latest_webcam_frame(device_id)
+    if cached and cached.get("image_b64"):
+        raw = base64.b64decode(cached["image_b64"])
+        return Response(content=raw, media_type="image/jpeg")
+
+    # 2. Check disk
+    latest = THUMBNAIL_DIR / device_id / "webcam_latest.jpg"
+    if latest.is_file():
+        return FileResponse(str(latest), media_type="image/jpeg")
+
+    raise NotFoundError("Webcam frame")
+

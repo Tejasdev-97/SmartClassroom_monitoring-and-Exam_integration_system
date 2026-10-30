@@ -292,6 +292,53 @@ export default function ExamSessionPage() {
     loadExamSession();
   }, [loadExamSession]);
 
+  // ── Register exam session with local Student Agent Bridge ──────────────────
+  // This resolves the agent's startup deadlock: agent.py blocks waiting for
+  // a session_id from the bridge before connecting to the classroom WebSocket.
+  // We POST to /session once the exam attempt is confirmed loaded.
+  useEffect(() => {
+    if (!attempt || !attemptId) return;
+    const IS_ELECTRON = typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+
+    const registerWithBridge = async () => {
+      // 1. Try to find the classroom session_id for this attempt from the backend
+      let classroomSessionId = null;
+      try {
+        const { data } = await api.get(`/classroom/agent/session-for-attempt/${attemptId}`).catch(() => ({ data: null }));
+        classroomSessionId = data?.data?.session_id || null;
+      } catch { /* not available — bridge will work without it */ }
+
+      const bridgePort = (typeof window.electronAPI?.agentPort === 'function' ? window.electronAPI.agentPort() : null) || 41732;
+
+      // 2. POST to the bridge so the agent learns the session_id
+      try {
+        await fetch(`http://127.0.0.1:${bridgePort}/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id:  classroomSessionId,
+            attempt_id:  attemptId,
+            student_user_id: attempt?.user_id || null,
+          }),
+        });
+      } catch { /* bridge not running — non-fatal */ }
+
+      // 3. Also push via Electron IPC (stronger guarantee, works even before bridge is up)
+      if (IS_ELECTRON && window.electronAPI?.agentSetSession) {
+        try {
+          await window.electronAPI.agentSetSession({
+            sessionId:  classroomSessionId,
+            attemptId,
+          });
+        } catch { /* noop */ }
+      }
+    };
+
+    registerWithBridge();
+  }, [attempt, attemptId]);
+
+
+
   const currentQuestion = pkg?.questions?.[currentIndex];
   const totalQuestions  = pkg?.questions?.length || 0;
 

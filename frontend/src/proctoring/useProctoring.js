@@ -81,6 +81,8 @@ export function useProctoring({ videoRef, attemptId, proctoringConfig, enabled =
   const inFlightCapturesRef = useRef(new Map()); // event_id -> Promise<snapshot_id>
   const isProcessingRef = useRef(false);
   const isStoppedRef = useRef(false);
+  const lastWebcamStreamRef = useRef(0);
+  const streamCanvasRef = useRef(null);
 
   const stopCamera = useCallback(() => {
     isStoppedRef.current = true;
@@ -213,6 +215,39 @@ export function useProctoring({ videoRef, attemptId, proctoringConfig, enabled =
         detector_name: DETECTOR_NAME, detector_version: DETECTOR_VERSION, rule_version: RULE_VERSION,
       });
 
+      // ── Relay confirmed AI event to the local Student Agent bridge ──
+      // The agent will forward this over its classroom WebSocket so the professor
+      // sees real-time face / phone warnings against the correct student card.
+      // Fire-and-forget: never block the exam or proctoring engine.
+      const AI_SEVERITY = {
+        face_absent: 'high',
+        multiple_faces: 'critical',
+        phone_detected: 'critical',
+        sustained_head_turn: 'medium',
+        camera_unavailable: 'high',
+        focus_loss: 'medium',
+      };
+      (() => {
+        try {
+          const bridgePort = (typeof window.electronAPI?.agentPort === 'function' ? window.electronAPI.agentPort() : null) || 41732;
+          fetch(`http://127.0.0.1:${bridgePort}/ai-events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              events: [{
+                event_type: type,
+                event_id: open.event_id,
+                attempt_id: attemptId,
+                severity: AI_SEVERITY[type] || 'medium',
+                client_timestamp: open.client_started_at || new Date().toISOString(),
+                confidence: open.metadata?.confidence ?? 1.0,
+                metadata: open.metadata || {},
+              }],
+            }),
+          }).catch(() => {}); // Ignore bridge errors — exam must never be disrupted
+        } catch { /* noop */ }
+      })();
+
       if (EVIDENCE_TYPES.has(type)) {
         // Resolve any in-flight provisional capture
         const pendingCapture = inFlightCapturesRef.current.get(event.event_id);
@@ -317,6 +352,42 @@ export function useProctoring({ videoRef, attemptId, proctoringConfig, enabled =
         headPitch: result.pitch,
         phoneDetections: result.phones,
       });
+
+      // Non-blocking webcam frame relay for classroom instructor live preview (reuses existing video element)
+      const nowMs = performance.now();
+      if (nowMs - lastWebcamStreamRef.current >= 1000) {
+        lastWebcamStreamRef.current = nowMs;
+        try {
+          if (!streamCanvasRef.current && typeof document !== 'undefined') {
+            streamCanvasRef.current = document.createElement('canvas');
+            streamCanvasRef.current.width = 160;
+            streamCanvasRef.current.height = 120;
+          }
+          if (streamCanvasRef.current) {
+            const ctx = streamCanvasRef.current.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, 160, 120);
+              const dataUrl = streamCanvasRef.current.toDataURL('image/jpeg', 0.5);
+              const b64 = dataUrl.split(',')[1];
+              if (b64) {
+                const bridgePort = (typeof window.electronAPI?.agentPort === 'function' ? window.electronAPI.agentPort() : null) || 41732;
+                // Relay to local student agent bridge (fire-and-forget)
+                fetch(`http://127.0.0.1:${bridgePort}/webcam-frame`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    attempt_id: attemptId,
+                    image_b64: b64,
+                    timestamp: new Date().toISOString(),
+                  }),
+                }).catch(() => {});
+              }
+            }
+          }
+        } catch {
+          // ignore non-critical relay errors
+        }
+      }
     } catch (e) {
       console.warn('[Proctoring Diagnostic] Frame inference warning:', e.message);
     } finally {

@@ -330,3 +330,138 @@ def get_session_policy(
             "block_multiple_monitors":      policy.block_multiple_monitors,
         }
     }
+
+
+# ── Session Export Report ──────────────────────────────────────────────────────
+
+@router.get("/{session_id}/report", summary="Generate comprehensive classroom session report")
+def get_session_report(
+    session_id: str = Path(...),
+    prof: dict = Depends(ProfessorUser),
+    db: Session = Depends(get_classroom_db),
+):
+    from app.classroom.models import ClassroomAlert, InstructorCommand
+    from sqlalchemy import select
+
+    s = db.get(ClassroomSession, session_id)
+    if not s or s.instructor_user_id != prof["sub"]:
+        raise NotFoundError("Session")
+
+    # Devices
+    assignments = db.execute(
+        select(ClassroomSessionDevice).where(ClassroomSessionDevice.session_id == session_id)
+    ).scalars().all()
+
+    # Alerts
+    alerts = db.execute(
+        select(ClassroomAlert).where(ClassroomAlert.session_id == session_id).order_by(ClassroomAlert.detected_at.desc())
+    ).scalars().all()
+
+    # Commands
+    commands = db.execute(
+        select(InstructorCommand).where(InstructorCommand.session_id == session_id).order_by(InstructorCommand.created_at.desc())
+    ).scalars().all()
+
+    alert_summary = {}
+    severity_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    confirmed_violations = 0
+    for a in alerts:
+        alert_summary[a.alert_type] = alert_summary.get(a.alert_type, 0) + 1
+        if a.severity in severity_summary:
+            severity_summary[a.severity] += 1
+        if a.resolution_status == "confirmed_violation":
+            confirmed_violations += 1
+
+    duration_sec = 0
+    if s.started_at:
+        end_time = s.ended_at or datetime.now(timezone.utc)
+        duration_sec = int((end_time - s.started_at).total_seconds())
+
+    report = {
+        "session": _session_out(s),
+        "duration_seconds": duration_sec,
+        "total_enrolled_devices": len(assignments),
+        "total_alerts": len(alerts),
+        "confirmed_violations": confirmed_violations,
+        "severity_summary": severity_summary,
+        "alert_type_summary": alert_summary,
+        "enrolled_students": [_assignment_out(a) for a in assignments],
+        "alerts": [
+            {
+                "alert_id": a.alert_id,
+                "device_id": a.device_id,
+                "student_user_id": a.student_user_id,
+                "alert_type": a.alert_type,
+                "severity": a.severity,
+                "description": a.description,
+                "resolution_status": a.resolution_status,
+                "detected_at": a.detected_at.isoformat(),
+            }
+            for a in alerts
+        ],
+        "commands_issued": [
+            {
+                "command_id": c.command_id,
+                "command_type": c.command_type,
+                "target_device_id": c.device_id,
+                "delivery_status": c.delivery_status,
+                "execution_result": c.execution_result,
+                "created_at": c.created_at.isoformat(),
+            }
+            for c in commands
+        ],
+    }
+    return {"data": report}
+
+
+@router.get("/{session_id}/report/download", summary="Download session report as JSON or CSV")
+def download_session_report(
+    session_id: str = Path(...),
+    format: str = Query("json", regex="^(json|csv)$"),
+    prof: dict = Depends(ProfessorUser),
+    db: Session = Depends(get_classroom_db),
+):
+    from fastapi.responses import Response
+    import io
+    import csv
+
+    rep_data = get_session_report(session_id, prof, db)["data"]
+
+    if format == "json":
+        content = json.dumps(rep_data, indent=2, default=str)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="classroom_session_{session_id[:8]}_report.json"'},
+        )
+    else:
+        # CSV Export
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Classroom Session Report", session_id])
+        writer.writerow(["Room Name", rep_data["session"]["room_name"]])
+        writer.writerow(["Status", rep_data["session"]["status"]])
+        writer.writerow(["Started At", rep_data["session"]["started_at"]])
+        writer.writerow(["Ended At", rep_data["session"]["ended_at"]])
+        writer.writerow(["Duration (seconds)", rep_data["duration_seconds"]])
+        writer.writerow([])
+        writer.writerow(["ENROLLED STUDENTS"])
+        writer.writerow(["Assignment ID", "Device ID", "Student Name", "Student USN", "Attempt ID", "Status"])
+        for st in rep_data["enrolled_students"]:
+            writer.writerow([st["assignment_id"], st["device_id"], st["student_name"], st["student_usn"], st["attempt_id"], st["status"]])
+        writer.writerow([])
+        writer.writerow(["SESSION ALERTS"])
+        writer.writerow(["Alert ID", "Device ID", "Alert Type", "Severity", "Resolution", "Detected At", "Description"])
+        for al in rep_data["alerts"]:
+            writer.writerow([al["alert_id"], al["device_id"], al["alert_type"], al["severity"], al["resolution_status"], al["detected_at"], al["description"]])
+        writer.writerow([])
+        writer.writerow(["INSTRUCTOR COMMANDS"])
+        writer.writerow(["Command ID", "Command Type", "Target Device", "Delivery Status", "Result", "Created At"])
+        for cmd in rep_data["commands_issued"]:
+            writer.writerow([cmd["command_id"], cmd["command_type"], cmd["target_device_id"], cmd["delivery_status"], cmd["execution_result"], cmd["created_at"]])
+
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="classroom_session_{session_id[:8]}_report.csv"'},
+        )
