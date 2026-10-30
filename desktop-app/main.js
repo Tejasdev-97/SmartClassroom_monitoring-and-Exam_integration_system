@@ -343,15 +343,32 @@ async function findFreePort(start = 41732, maxTry = 20) {
 }
 
 /**
- * Locate the Python executable to use.
- * Prefer a venv inside student-agent/, then fall back to system python3/python.
+ * Locate the student-agent directory across dev and packaged Electron environments.
  */
-function findPython() {
+function getAgentDir() {
+  const candidates = [
+    path.join(__dirname, '..', 'student-agent'),
+    path.join(process.resourcesPath || '', 'student-agent'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'student-agent'),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, 'agent.py'))) {
+      return dir;
+    }
+  }
+  return path.join(__dirname, '..', 'student-agent');
+}
+
+/**
+ * Locate the Python executable to use.
+ * Prefer a venv inside student-agent/, then fall back to system python/python3.
+ */
+function findPython(agentDir) {
   const isWin = process.platform === 'win32';
-  const agentDir = path.join(__dirname, '..', 'student-agent');
+  const dir = agentDir || getAgentDir();
   const venvPython = isWin
-    ? path.join(agentDir, '.venv', 'Scripts', 'python.exe')
-    : path.join(agentDir, '.venv', 'bin', 'python3');
+    ? path.join(dir, '.venv', 'Scripts', 'python.exe')
+    : path.join(dir, '.venv', 'bin', 'python3');
   if (fs.existsSync(venvPython)) return venvPython;
   return isWin ? 'python' : 'python3';
 }
@@ -369,8 +386,8 @@ async function startAgent(serverUrl) {
   const port = await findFreePort(41732);
   _agentPort = port;
 
-  const python  = findPython();
-  const agentDir = path.join(__dirname, '..', 'student-agent');
+  const agentDir = getAgentDir();
+  const python  = findPython(agentDir);
   const agentScript = path.join(agentDir, 'agent.py');
 
   if (!fs.existsSync(agentScript)) {

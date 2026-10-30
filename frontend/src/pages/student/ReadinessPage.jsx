@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Camera, CheckCircle, XCircle, AlertTriangle, ArrowRight, RefreshCw, Maximize2, Monitor } from 'lucide-react';
-import api from '../../services/api';
+import api, { BASE_URL } from '../../services/api';
 import { examPackageRepo, attemptRepo } from '../../storage/repositories';
 import { useToast } from '../../contexts/ToastContext';
 import styles from './ReadinessPage.module.css';
@@ -154,7 +154,8 @@ export default function ReadinessPage() {
       // Try to launch it
       setCheck('agent', 'pending', 'Launching monitoring agent…');
       try {
-        const result = await window.electronAPI.agentLaunch({});
+        const agentServerUrl = BASE_URL ? BASE_URL.replace(/\/api\/v1\/?$/, '') : undefined;
+        const result = await window.electronAPI.agentLaunch({ serverUrl: agentServerUrl });
         if (cancelled) return;
         if (result?.ok) {
           if (result.port) agentBridgePortRef.current = result.port;
@@ -220,7 +221,8 @@ export default function ReadinessPage() {
         try {
           const isRunning = await window.electronAPI.agentIsRunning();
           if (!isRunning?.running) {
-            const launchResult = await window.electronAPI.agentLaunch({});
+            const agentServerUrl = BASE_URL ? BASE_URL.replace(/\/api\/v1\/?$/, '') : undefined;
+            const launchResult = await window.electronAPI.agentLaunch({ serverUrl: agentServerUrl });
             if (launchResult?.port) agentBridgePortRef.current = launchResult.port;
             // Wait briefly for bridge to initialize
             await new Promise((r) => setTimeout(r, 1200));

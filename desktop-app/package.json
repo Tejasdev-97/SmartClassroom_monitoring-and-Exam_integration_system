@@ -45,6 +45,21 @@
         "to": "frontend/dist",
         "filter": ["**/*"]
       }
+    ],
+    "extraResources": [
+      {
+        "from": "../student-agent",
+        "to": "student-agent",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/.venv/**",
+          "!**/*.pyc",
+          "!offline_events.db*",
+          "!tests/**",
+          "!**/.pytest_cache/**"
+        ]
+      }
     ]
   }
 }
