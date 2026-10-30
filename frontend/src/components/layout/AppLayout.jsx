@@ -8,7 +8,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   LayoutDashboard, BookOpen, Users, Settings, LogOut,
-  ShieldCheck, Video, Menu, X, ChevronLeft, ChevronRight,
+  ShieldCheck, Video, Menu, X, ChevronLeft, ChevronRight, Monitor,
 } from 'lucide-react';
 import brandLogo from '../../assets/examproctor.ai_logo.png';
 import styles from './AppLayout.module.css';
@@ -62,12 +62,14 @@ export default function AppLayout() {
     { to: '/professor', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/professor/exams/new', icon: BookOpen, label: 'New Exam' },
     { to: '/professor/video-analysis', icon: Video, label: 'Video Analysis' },
+    { to: '/professor/classroom', icon: Monitor, label: 'Classroom' },
   ];
 
   const adminLinks = [
     { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/admin/users', icon: Users, label: 'Users' },
     { to: '/professor/video-analysis', icon: Video, label: 'Video Analysis' },
+    { to: '/professor/classroom', icon: Monitor, label: 'Classroom' },
     { to: '/admin/settings', icon: Settings, label: 'Settings' },
     { to: '/admin/audit', icon: ShieldCheck, label: 'Audit Log' },
   ];

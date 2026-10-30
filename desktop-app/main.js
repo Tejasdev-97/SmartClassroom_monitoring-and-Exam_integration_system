@@ -309,6 +309,78 @@ ipcMain.handle('screen-capture:stop-session', () => {
   return { success: true };
 });
 
+// ── Classroom Agent Bridge (Electron ↔ Python Agent at 127.0.0.1:41732) ──────
+// These IPC handlers allow the React renderer to communicate with the Python
+// student agent via the localhost HTTP bridge, without directly exposing Node.js.
+
+const http = require('http');
+
+function agentBridgeRequest(method, path, body) {
+  return new Promise((resolve, reject) => {
+    const bodyStr = body ? JSON.stringify(body) : '';
+    const opts = {
+      hostname: '127.0.0.1',
+      port: 41732,
+      path,
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(bodyStr),
+      },
+      timeout: 3000,
+    };
+    const req = http.request(opts, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve({ raw: data }); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Agent bridge timeout')); });
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+/** Get agent status — renderer calls window.electronAPI.agentStatus() */
+ipcMain.handle('agent:status', async () => {
+  try {
+    return await agentBridgeRequest('GET', '/status', null);
+  } catch {
+    return { ok: false, error: 'Agent not running' };
+  }
+});
+
+/** Notify the agent which session+attempt is active */
+ipcMain.handle('agent:set-session', async (_event, params) => {
+  const { sessionId, attemptId } = params || {};
+  try {
+    return await agentBridgeRequest('POST', '/session', { session_id: sessionId, attempt_id: attemptId });
+  } catch {
+    return { ok: false, error: 'Agent not running' };
+  }
+});
+
+/** Get pending instructor commands forwarded by the agent */
+ipcMain.handle('agent:get-commands', async () => {
+  try {
+    return await agentBridgeRequest('GET', '/commands', null);
+  } catch {
+    return { commands: [] };
+  }
+});
+
+/** Report command execution result back to the agent */
+ipcMain.handle('agent:command-result', async (_event, params) => {
+  try {
+    return await agentBridgeRequest('POST', '/command-result', params);
+  } catch {
+    return { ok: false };
+  }
+});
+
 // App lifecycle
 app.whenReady().then(() => {
   createWindow();

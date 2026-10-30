@@ -35,6 +35,11 @@ const ExamMonitorPage    = lazy(() => import('./pages/professor/ExamMonitorPage'
 const AttemptReviewPage  = lazy(() => import('./pages/professor/AttemptReviewPage'));
 const VideoAnalysisPage  = lazy(() => import('./pages/professor/VideoAnalysisPage'));
 
+// ── Classroom Monitoring pages (new) ────────────────────────────────────────
+const ClassroomPage       = lazy(() => import('./pages/professor/classroom/ClassroomPage'));
+const ClassroomDashboard  = lazy(() => import('./pages/professor/classroom/ClassroomDashboard'));
+const DeviceManagerPage   = lazy(() => import('./pages/professor/classroom/DeviceManagerPage'));
+
 // ── Admin pages ────────────────────────────────────────────────────────────
 const AdminDashboard   = lazy(() => import('./pages/admin/AdminDashboard'));
 const UserManagement   = lazy(() => import('./pages/admin/UserManagement'));
@@ -105,6 +110,10 @@ export default function App() {
                 <Route path="/professor/exams/:examId/monitor" element={<ExamMonitorPage />} />
                 <Route path="/professor/attempts/:attemptId/review" element={<AttemptReviewPage />} />
                 <Route path="/professor/video-analysis" element={<VideoAnalysisPage />} />
+                {/* Classroom monitoring routes */}
+                <Route path="/professor/classroom" element={<ClassroomPage />} />
+                <Route path="/professor/classroom/session/:sessionId" element={<ClassroomDashboard />} />
+                <Route path="/professor/classroom/devices" element={<DeviceManagerPage />} />
               </Route>
 
               {/* Admin routes */}
