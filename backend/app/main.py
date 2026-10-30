@@ -8,6 +8,7 @@ import uuid
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
 from app.core.errors import (
@@ -19,6 +20,33 @@ from app.api.v1 import (
     reports, retakes, settings as settings_router, video_analysis,
 )
 
+# ── Classroom monitoring routers (additive — new module, zero changes above) ──
+from app.classroom.api import (
+    devices as classroom_devices,
+    sessions as classroom_sessions,
+    alerts as classroom_alerts,
+    commands as classroom_commands,
+    policies as classroom_policies,
+    agent_events as classroom_agent_events,
+    ws as classroom_ws,
+    clips as classroom_clips,
+    lease as classroom_lease,
+)
+
+
+class _BodyCacheMiddleware(BaseHTTPMiddleware):
+    """
+    Cache request body bytes for classroom agent event endpoints that use
+    synchronous route handlers (which cannot call await request.body() directly).
+    IMPORTANT: Only activates for /api/v1/classroom/agent/* paths to avoid
+    interfering with existing multipart uploads and large file ingestion.
+    """
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/api/v1/classroom/agent/events/"):
+            body = await request.body()
+            request.state._body = body
+        return await call_next(request)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,6 +54,16 @@ async def lifespan(app: FastAPI):
     # Ensure storage directory exists
     from pathlib import Path
     Path(settings.SNAPSHOT_LOCAL_DIR).mkdir(parents=True, exist_ok=True)
+
+    # ── Classroom monitoring: create SQLite tables + seed default policy ──────
+    from app.classroom.db import init_classroom_db
+    from app.classroom.api.policies import seed_default_policy
+    from app.classroom.db import ClassroomSessionLocal
+    init_classroom_db()
+    with ClassroomSessionLocal() as _db:
+        seed_default_policy(_db)
+    # ─────────────────────────────────────────────────────────────────────────
+
     yield
     # Cleanup on shutdown
 
@@ -38,6 +76,9 @@ app = FastAPI(
     docs_url="/api/docs" if settings.APP_ENV == "development" else None,
     redoc_url="/api/redoc" if settings.APP_ENV == "development" else None,
 )
+
+# ── Body cache (for sync classroom agent endpoints) ──────────────────────────
+app.add_middleware(_BodyCacheMiddleware)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -68,6 +109,18 @@ app.include_router(reports.router, prefix=PREFIX)
 app.include_router(retakes.router, prefix=PREFIX)
 app.include_router(settings_router.router, prefix=PREFIX)
 app.include_router(video_analysis.router, prefix=PREFIX)
+
+# ── Classroom monitoring routers (all under /api/v1) ──────────────────────────
+app.include_router(classroom_policies.router,       prefix=PREFIX)
+app.include_router(classroom_devices.router,        prefix=PREFIX)
+app.include_router(classroom_sessions.router,       prefix=PREFIX)
+app.include_router(classroom_alerts.router,         prefix=PREFIX)
+app.include_router(classroom_commands.session_router, prefix=PREFIX)
+app.include_router(classroom_commands.device_router,  prefix=PREFIX)
+app.include_router(classroom_agent_events.router,   prefix=PREFIX)
+app.include_router(classroom_clips.router,          prefix=PREFIX)
+app.include_router(classroom_lease.router,          prefix=PREFIX)
+app.include_router(classroom_ws.router)                 # WS paths: no prefix
 
 
 # ── Health / readiness ────────────────────────────────────────────────────────

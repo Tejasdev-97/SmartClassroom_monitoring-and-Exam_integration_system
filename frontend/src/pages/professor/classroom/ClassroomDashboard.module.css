@@ -1,0 +1,713 @@
+/* ClassroomDashboard.module.css — Neo-Brutalism styling for CCTV Live Student Monitoring */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Header & Breadcrumb */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-blue);
+  text-decoration: none;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-extrabold);
+  color: var(--color-text-heading);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Overview Stats Row */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-3);
+}
+
+.statCard {
+  background: var(--color-surface);
+  border: var(--border-base);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-3);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.statCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.statValue {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-extrabold);
+  color: var(--color-text-heading);
+  line-height: 1.1;
+}
+
+.statLabel {
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* CCTV Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  background: var(--color-surface);
+  border: var(--border-base);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+}
+
+.toolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Grid Layout Selector: 2x2, 3x3, 4x4, auto */
+.layoutSelector {
+  display: inline-flex;
+  border: var(--border-base);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 2px 2px 0 var(--color-border);
+}
+
+.layoutBtn {
+  background: var(--color-surface);
+  border: none;
+  border-right: 1px solid var(--color-border);
+  padding: 6px 12px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-main);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.layoutBtn:last-child {
+  border-right: none;
+}
+
+.layoutBtn:hover {
+  background: var(--color-blue-light);
+}
+
+.layoutBtnActive {
+  background: var(--color-blue);
+  color: #ffffff;
+}
+
+.layoutBtnActive:hover {
+  background: var(--color-blue-deep);
+}
+
+/* CCTV Monitoring Grid Container */
+.cctvGrid {
+  display: grid;
+  gap: var(--space-4);
+  width: 100%;
+  transition: all var(--transition-base);
+}
+
+.grid2x2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid3x3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid4x4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.grid6x6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.gridAuto {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+/* Student CCTV Monitor Card */
+.monitorCard {
+  background: var(--color-surface);
+  border: var(--border-base);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.monitorCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.monitorCardSelected {
+  border-color: var(--color-blue);
+  box-shadow: 4px 4px 0 var(--color-blue);
+}
+
+.monitorCardAlerted {
+  border-color: var(--color-red);
+  box-shadow: 4px 4px 0 var(--color-red);
+}
+
+.monitorCardOffline {
+  opacity: 0.75;
+}
+
+/* Card Header */
+.cardHeader {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: var(--border-thin);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.workstationLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-extrabold);
+  color: var(--color-text-heading);
+}
+
+.studentIdent {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+/* CCTV Screen Preview Area */
+.screenPreviewContainer {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #0f172a;
+  border-bottom: var(--border-thin);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.screenImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* CCTV Standby / Test Pattern Screen */
+.cctvStandby {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  color: #94a3b8;
+  font-size: var(--font-size-xs);
+  text-align: center;
+  padding: var(--space-3);
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(15, 23, 42, 0.95),
+    rgba(15, 23, 42, 0.95) 2px,
+    rgba(30, 41, 59, 0.8) 2px,
+    rgba(30, 41, 59, 0.8) 4px
+  );
+}
+
+.standbyIcon {
+  color: #64748b;
+  opacity: 0.8;
+}
+
+.standbyStatus {
+  font-family: monospace;
+  font-weight: var(--font-weight-bold);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  color: #cbd5e1;
+}
+
+/* Small Circular Webcam Overlay Preview (Requirement B) */
+.webcamOverlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  background: #1e293b;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.webcamImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.webcamPlaceholder {
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Active Process / Window Pill */
+.activeProcessPill {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  background: rgba(16, 32, 74, 0.85);
+  backdrop-filter: blur(4px);
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Warning Counters Bar */
+.warningBar {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border-bottom: var(--border-thin);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+}
+
+.warningBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: var(--font-weight-bold);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+}
+
+.warningBadgeClean {
+  color: var(--color-green);
+  background: var(--color-green-light);
+}
+
+.warningBadgeAlert {
+  color: var(--color-red);
+  background: var(--color-red-light);
+  animation: pulse 2s infinite;
+}
+
+/* Card Footer */
+.cardFooter {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.heartbeatText {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Alert Slide-over Panel (Requirement D) */
+.alertDrawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  max-width: 90vw;
+  background: var(--color-surface);
+  border-left: var(--border-thick);
+  box-shadow: -6px 0 0 rgba(16, 32, 74, 0.2);
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight var(--transition-base);
+}
+
+.alertDrawerHeader {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: var(--border-base);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-text-heading);
+  color: var(--color-text-on-dark);
+}
+
+.alertDrawerTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-extrabold);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.alertDrawerClose {
+  background: transparent;
+  border: none;
+  color: var(--color-text-on-dark);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.alertDrawerBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.alertItem {
+  background: var(--color-surface);
+  border: var(--border-base);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: 2px 2px 0 var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.alertItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.alertTimestamp {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.alertDesc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-main);
+  line-height: var(--line-height-normal);
+}
+
+.alertActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* Selected Student Modal View (Requirement C) */
+.studentModalWide {
+  max-width: 960px !important;
+  width: 95% !important;
+}
+
+.studentDetailGrid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-6);
+}
+
+.detailScreenContainer {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #0f172a;
+  border: var(--border-base);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detailWebcamContainer {
+  width: 120px;
+  height: 90px;
+  background: #1e293b;
+  border: 2px solid #ffffff;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-light);
+  font-size: var(--font-size-xs);
+}
+
+.infoKey {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.infoVal {
+  color: var(--color-text-heading);
+  font-weight: var(--font-weight-bold);
+  font-family: monospace;
+}
+
+.screenEnlargeBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+  z-index: 5;
+}
+
+.screenEnlargeBtn:hover {
+  background: var(--color-blue);
+  color: #ffffff;
+}
+
+/* Standalone Enlarged Modal */
+.independentModalContent {
+  background: var(--color-surface);
+  border: var(--border-base);
+  border-radius: var(--radius-xl);
+  box-shadow: 8px 8px 0 var(--color-border);
+  width: 90vw;
+  max-width: 860px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mediaLargePreview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mediaLargePreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.webcamSquarePreview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 520px;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.webcamSquarePreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Timeline & Evidence in Inspector */
+.tabRow {
+  display: flex;
+  border-bottom: 2px solid var(--color-border);
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.tabItem {
+  padding: var(--space-2) var(--space-4);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xs);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+
+.tabItemActive {
+  color: var(--color-blue);
+  border-bottom-color: var(--color-blue);
+}
+
+.timelineList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.timelineEntry {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-alt);
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+
+.evidenceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: var(--space-3);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.evidenceThumb {
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  flex-direction: column;
+}
+
+.evidenceThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 1024px) {
+  .statsRow {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .studentDetailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .statsRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid2x2, .grid3x3, .grid4x4, .grid6x6 {
+    grid-template-columns: 1fr;
+  }
+}

@@ -8,7 +8,9 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   LayoutDashboard, BookOpen, Users, Settings, LogOut,
-  ShieldCheck, Video, Menu, X, ChevronLeft, ChevronRight,
+  ShieldCheck, Video, Menu, X, ChevronLeft, ChevronRight, Monitor,
+  Radio, PlusCircle, CheckCircle, BarChart3, User, Key, Clock, Award,
+  Laptop, GraduationCap,
 } from 'lucide-react';
 import brandLogo from '../../assets/examproctor.ai_logo.png';
 import styles from './AppLayout.module.css';
@@ -52,24 +54,42 @@ export default function AppLayout() {
 
   const closeMobileDrawer = () => setMobileOpen(false);
 
-  // Role-specific links
-  const studentLinks = [
-    { to: '/student', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/student/enter-exam', icon: BookOpen, label: 'Enter Exam' },
-  ];
-
+  // 3.1 Professor Sidebar Navigation
   const professorLinks = [
     { to: '/professor', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/professor/exams/new', icon: BookOpen, label: 'New Exam' },
+    { to: '/professor/exams/new', icon: PlusCircle, label: 'Create Exam' },
+    { to: '/professor/exams', icon: BookOpen, label: 'My Exams' },
+    { to: '/professor/live-monitoring', icon: Radio, label: 'Live Monitoring' },
     { to: '/professor/video-analysis', icon: Video, label: 'Video Analysis' },
+    { to: '/professor/submissions', icon: CheckCircle, label: 'Submissions' },
+    { to: '/professor/reports', icon: BarChart3, label: 'Results & Reports' },
+    { to: '/professor/classroom', icon: Monitor, label: 'Classroom Management' },
+    { to: '/professor/profile', icon: User, label: 'Profile' },
   ];
 
+  // 3.2 Student Sidebar Navigation
+  const studentLinks = [
+    { to: '/student', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/student/available-exams', icon: BookOpen, label: 'Available Exams' },
+    { to: '/student/enter-exam', icon: Key, label: 'Enter Exam' },
+    { to: '/student/attempts', icon: Clock, label: 'My Attempts' },
+    { to: '/student/results', icon: Award, label: 'My Results' },
+    { to: '/student/status', icon: Laptop, label: 'Device & Proctoring Status' },
+    { to: '/student/profile', icon: User, label: 'Profile' },
+  ];
+
+  // 3.3 Admin Sidebar Navigation
   const adminLinks = [
     { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/admin/users', icon: Users, label: 'Users' },
-    { to: '/professor/video-analysis', icon: Video, label: 'Video Analysis' },
-    { to: '/admin/settings', icon: Settings, label: 'Settings' },
-    { to: '/admin/audit', icon: ShieldCheck, label: 'Audit Log' },
+    { to: '/admin/users', icon: Users, label: 'User Management' },
+    { to: '/admin/professors', icon: GraduationCap, label: 'Professor Management' },
+    { to: '/admin/exams', icon: BookOpen, label: 'Examination Management' },
+    { to: '/admin/classroom', icon: Monitor, label: 'Classroom & Device Management' },
+    { to: '/admin/video-analysis', icon: Video, label: 'Video Analysis' },
+    { to: '/admin/reports', icon: BarChart3, label: 'Reports & Analytics' },
+    { to: '/admin/settings', icon: Settings, label: 'System Settings' },
+    { to: '/admin/audit', icon: ShieldCheck, label: 'Audit Logs' },
+    { to: '/admin/profile', icon: User, label: 'Profile' },
   ];
 
   const links =

@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Camera, CheckCircle, XCircle, AlertTriangle, ArrowRight, RefreshCw, Maximize2, Monitor } from 'lucide-react';
-import api from '../../services/api';
+import api, { BASE_URL } from '../../services/api';
 import { examPackageRepo, attemptRepo } from '../../storage/repositories';
 import { useToast } from '../../contexts/ToastContext';
 import styles from './ReadinessPage.module.css';
@@ -35,18 +35,22 @@ function CheckRow({ label, state, detail }) {
   );
 }
 
+const IS_ELECTRON = typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+
 export default function ReadinessPage() {
   const { attemptId } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const agentBridgePortRef = useRef(41732);
 
-  const [checks, setChecks] = useState({
+  const [checks, setChecks] = useState(() => ({
     camera:   'pending',
     package:  'pending',
     storage:  'pending',
-  });
+    ...(IS_ELECTRON ? { agent: 'pending' } : {}),
+  }));
   const [details, setDetails] = useState({});
   const [canStart, setCanStart] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -131,6 +135,50 @@ export default function ReadinessPage() {
     };
   }, [attemptId, setCheck]);
 
+  // Electron-only: check/launch the Python student agent
+  useEffect(() => {
+    if (!IS_ELECTRON) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // First check if already running
+        const status = await window.electronAPI.agentStatus();
+        if (cancelled) return;
+        if (status?.ok) {
+          if (status.bridge_port) agentBridgePortRef.current = status.bridge_port;
+          setCheck('agent', 'pass', `Monitoring agent running on port ${status.bridge_port || agentBridgePortRef.current}.`);
+          return;
+        }
+      } catch { /* agent not running yet */ }
+
+      // Try to launch it
+      setCheck('agent', 'pending', 'Launching monitoring agent…');
+      try {
+        const agentServerUrl = BASE_URL ? BASE_URL.replace(/\/api\/v1\/?$/, '') : undefined;
+        const result = await window.electronAPI.agentLaunch({ serverUrl: agentServerUrl });
+        if (cancelled) return;
+        if (result?.ok) {
+          if (result.port) agentBridgePortRef.current = result.port;
+          // Brief wait for agent bridge to initialize
+          await new Promise((r) => setTimeout(r, 1500));
+          const status2 = await window.electronAPI.agentStatus().catch(() => null);
+          if (status2?.ok) {
+            setCheck('agent', 'pass', `Monitoring agent started on port ${result.port || agentBridgePortRef.current}.`);
+          } else {
+            setCheck('agent', 'warning', 'Agent started but bridge not responding yet. Exam will start anyway.');
+          }
+        } else {
+          setCheck('agent', 'warning', `Monitoring agent could not start: ${result?.error || 'Unknown error'}. Exam can proceed without local monitoring.`);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCheck('agent', 'warning', `Agent launch failed: ${err?.message || 'Unknown error'}. Exam can proceed without local monitoring.`);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [setCheck]);
+
   // Determine if all critical checks pass
   useEffect(() => {
     const crit = ['camera', 'package'];
@@ -165,6 +213,29 @@ export default function ReadinessPage() {
           await window.electronAPI.initScreenCaptureSession({ attemptId, consented: screenConsent });
         } catch (initErr) {
           console.warn('[Screen Monitoring] Failed to initialize Electron capture session:', initErr);
+        }
+      }
+
+      // 0b. Ensure student agent is running and register the attempt with the bridge
+      if (IS_ELECTRON) {
+        try {
+          const isRunning = await window.electronAPI.agentIsRunning();
+          if (!isRunning?.running) {
+            const agentServerUrl = BASE_URL ? BASE_URL.replace(/\/api\/v1\/?$/, '') : undefined;
+            const launchResult = await window.electronAPI.agentLaunch({ serverUrl: agentServerUrl });
+            if (launchResult?.port) agentBridgePortRef.current = launchResult.port;
+            // Wait briefly for bridge to initialize
+            await new Promise((r) => setTimeout(r, 1200));
+          } else if (isRunning?.port) {
+            agentBridgePortRef.current = isRunning.port;
+          }
+          // Register attempt context with the bridge so the agent can auto-connect
+          // session_id will be empty if no classroom session is assigned yet;
+          // the agent will re-poll once it receives a session_id update.
+          await window.electronAPI.agentSetSession({ sessionId: null, attemptId });
+        } catch (agentErr) {
+          // Non-blocking: exam proceeds even if agent registration fails
+          console.warn('[Readiness] Agent session registration failed:', agentErr?.message);
         }
       }
 

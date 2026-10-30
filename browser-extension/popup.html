@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExamProctor Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0d14; color: #e2e8f0;
+      width: 280px; padding: 16px; min-height: 120px;
+    }
+    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot.active   { background: #6366f1; box-shadow: 0 0 8px #6366f1; }
+    .dot.inactive { background: #6b7280; }
+    h1 { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+    .status { font-size: 12px; color: #94a3b8; }
+    .row { display: flex; justify-content: space-between; align-items: center;
+           padding: 6px 0; border-top: 1px solid #1e293b; font-size: 12px; }
+    .label { color: #94a3b8; }
+    .value { color: #e2e8f0; font-weight: 600; font-family: monospace; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 11px; font-weight: 700;
+    }
+    .badge.on  { background: #6366f122; color: #6366f1; border: 1px solid #6366f133; }
+    .badge.off { background: #6b728022; color: #9ca3af;  border: 1px solid #6b728033; }
+    .port-row { margin-top: 10px; display: flex; gap: 6px; align-items: center; }
+    .port-row input {
+      flex: 1; padding: 5px 8px; border-radius: 6px; background: #1e293b;
+      border: 1px solid #334155; color: #e2e8f0; font-size: 12px;
+    }
+    .port-row button {
+      padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer;
+      background: #6366f1; color: #fff; font-size: 12px; font-weight: 600;
+    }
+    .port-row button:hover { background: #4f46e5; }
+    .note { font-size: 10px; color: #475569; margin-top: 10px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="dot" id="dot"></div>
+    <div>
+      <h1>ExamProctor Monitor</h1>
+      <div class="status" id="status-text">Checking…</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">Session</span>
+    <span class="value" id="session-id">—</span>
+  </div>
+  <div class="row">
+    <span class="label">Monitoring</span>
+    <span id="badge-monitoring" class="badge off">OFF</span>
+  </div>
+  <div class="row">
+    <span class="label">Events buffered</span>
+    <span class="value" id="buffered">0</span>
+  </div>
+
+  <div class="port-row">
+    <input id="port-input" type="number" placeholder="Bridge port (41732)" min="1024" max="65535" />
+    <button id="port-btn">Set</button>
+  </div>
+
+  <p class="note">
+    Only domain names and page titles are reported.<br>
+    No passwords, keystrokes or private browsing data are captured.
+  </p>
+
+  <script src="popup.js"></script>
+</body>
+</html>
